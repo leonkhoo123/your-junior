@@ -1,14 +1,13 @@
 import { useState, useEffect, useCallback } from "react"
 import { useNavigate } from "react-router-dom"
-import { LogOut, Sun, Moon } from "lucide-react"
+import { LogOut, Sun, Moon, Plus } from "lucide-react"
 import { toast } from "sonner"
 import DefaultLayout from "@/layouts/DefaultLayout"
 import { Button } from "@/components/ui/button"
 import { logout } from "@/api/api-auth"
 import { useOpencodeWebSocket } from "@/hooks/useOpencodeWebSocket"
-import { useChatMessages } from "@/hooks/useChatMessages"
 import { ServerControl } from "@/components/opencode/ServerControl"
-import { ChatPanel } from "@/components/opencode/ChatPanel"
+import { OpencodeChatPane } from "@/components/opencode/OpencodeChatPane"
 import { getConfig } from "@/config"
 import { logger } from "@/utils/logger"
 import { useTheme } from "@/components/theme-provider"
@@ -47,9 +46,7 @@ export default function HomePage() {
 
   const [serverState, setServerState] = useLoggedState<ServerState>("stopped", "serverState")
   const [serverModel, setServerModel] = useLoggedState("deepseek/deepseek-v4-pro", "serverModel")
-  const [sessionId, setSessionId] = useLoggedState<string | null>(null, "sessionId")
-
-  const { messages, addUserMessage } = useChatMessages({ on, sessionId })
+  const [sessionIds, setSessionIds] = useLoggedState<string[]>([], "sessionIds")
 
   useEffect(() => {
     if (wsStatus !== "connected") return
@@ -78,29 +75,29 @@ export default function HomePage() {
         if (msg.data?.model) setServerModel(msg.data.model as string)
       } else if (s === "stopped") {
         setServerState("stopped")
-        setSessionId(null)
+        setSessionIds([])
       }
     })
     return unsub
-  }, [on, setServerState, setServerModel, setSessionId])
+  }, [on, setServerState, setServerModel, setSessionIds])
 
   useEffect(() => {
-    if (serverState === "running" && !sessionId && wsStatus === "connected") {
-      logger.info("Auto-creating session")
+    if (serverState === "running" && sessionIds.length === 0 && wsStatus === "connected") {
+      logger.info("Auto-creating first session")
       send({ type: "create_session" })
     }
-  }, [serverState, sessionId, wsStatus, send])
+  }, [serverState, sessionIds.length, wsStatus, send])
 
   useEffect(() => {
     const unsub = on("session_created", (msg) => {
       const sid = msg.data?.session_id as string | undefined
       logger.info("Received session_created", { session_id: sid })
       if (sid) {
-        setSessionId(sid)
+        setSessionIds((prev) => [...prev, sid])
       }
     })
     return unsub
-  }, [on, setSessionId])
+  }, [on, setSessionIds])
 
   useEffect(() => {
     const unsub = on("error", (msg) => {
@@ -122,20 +119,16 @@ export default function HomePage() {
     send({ type: "stop_server" })
   }, [send])
 
-  const handleSendMessage = useCallback(
-    (text: string) => {
-      logger.info("User sending message", { session_id: sessionId, textLen: text.length })
-      if (sessionId) {
-        addUserMessage(text)
-        send({
-          type: "send_message",
-          data: { session_id: sessionId, text },
-        })
-      } else {
-        logger.warn("Cannot send message: no session_id")
-      }
+  const handleNewChat = useCallback(() => {
+    logger.info("Creating new chat session")
+    send({ type: "create_session" })
+  }, [send])
+
+  const handleClosePane = useCallback(
+    (sid: string) => {
+      setSessionIds((prev) => prev.filter((id) => id !== sid))
     },
-    [sessionId, send, addUserMessage],
+    [setSessionIds],
   )
 
   const handleLogout = () => {
@@ -178,7 +171,57 @@ export default function HomePage() {
         onStop={handleStop}
       />
 
-      <ChatPanel sessionId={sessionId} messages={messages} onSendMessage={handleSendMessage} />
+      <div className="flex-1 flex min-h-0">
+        {sessionIds.length === 0 && serverState === "running" ? (
+          <div className="flex-1 flex items-center justify-center">
+            <p className="font-mono text-sm text-muted-foreground/40">Creating session...</p>
+          </div>
+        ) : sessionIds.length === 0 ? (
+          <div className="flex-1 flex items-center justify-center">
+            <p className="font-mono text-sm text-muted-foreground/40">
+              Start the OpenCode server to begin.
+            </p>
+          </div>
+        ) : sessionIds.length === 1 ? (
+          <OpencodeChatPane
+            sessionId={sessionIds[0]}
+            send={send}
+            on={on}
+            label="Chat 1"
+          />
+        ) : (
+          <div className="flex-1 flex flex-col gap-2 p-2 overflow-hidden">
+            <div className="flex items-center gap-2 px-1 shrink-0">
+              <span className="font-mono text-xs text-muted-foreground/50">
+                {sessionIds.length} chats
+              </span>
+              <div className="flex-1" />
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleNewChat}
+                className="h-6 px-2 text-xs font-mono text-muted-foreground/50 hover:text-foreground"
+              >
+                <Plus className="size-3" />
+                New Chat
+              </Button>
+            </div>
+            <div className="flex-1 flex gap-2 overflow-x-auto min-h-0">
+              {sessionIds.map((sid, i) => (
+                <div key={sid} className="flex-1 min-w-0">
+                  <OpencodeChatPane
+                    sessionId={sid}
+                    send={send}
+                    on={on}
+                    label={`Chat ${i + 1}`}
+                    onClose={sessionIds.length > 1 ? () => handleClosePane(sid) : undefined}
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
     </DefaultLayout>
   )
 }

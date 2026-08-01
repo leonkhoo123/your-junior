@@ -1,6 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from "react"
-import { Send } from "lucide-react"
-import { Button } from "@/components/ui/button"
+import { useState, useRef, useEffect } from "react"
 import { MessageBubble } from "@/components/opencode/MessageBubble"
 import type { DisplayMessage } from "@/hooks/useChatMessages"
 
@@ -13,23 +11,17 @@ interface ChatPanelProps {
 export function ChatPanel({ sessionId, messages, onSendMessage }: ChatPanelProps) {
   const [input, setInput] = useState("")
   const bottomRef = useRef<HTMLDivElement>(null)
-  const listRef = useRef<HTMLDivElement>(null)
-  const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
 
-  const scrollToBottom = useCallback(() => {
+  useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" })
-  }, [])
+  }, [messages])
 
   useEffect(() => {
-    scrollToBottom()
-  }, [messages, scrollToBottom])
-
-  useEffect(() => {
-    if (textareaRef.current) {
-      textareaRef.current.style.height = "auto"
-      textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 160)}px`
+    if (sessionId) {
+      inputRef.current?.focus()
     }
-  }, [input])
+  }, [sessionId])
 
   const handleSend = () => {
     const text = input.trim()
@@ -46,40 +38,44 @@ export function ChatPanel({ sessionId, messages, onSendMessage }: ChatPanelProps
   }
 
   return (
-    <>
-      <div ref={listRef} className="flex-1 overflow-y-auto">
+    <div className="flex flex-col flex-1 min-h-0 bg-[#0d1117]">
+      <div className="flex-1 overflow-y-auto px-4 py-3">
         {messages.length === 0 && (
-          <div className="flex items-center justify-center h-full p-8">
-            <p className="text-muted-foreground text-sm text-center">
+          <div className="flex items-center justify-center h-full">
+            <p className="font-mono text-sm text-muted-foreground/40">
               {sessionId
-                ? "Send a message to start chatting with OpenCode."
-                : "Start the OpenCode server to begin."}
+                ? 'Type a message and press Enter to begin. Use Shift+Enter for newlines.'
+                : 'Start the OpenCode server to begin.'}
             </p>
           </div>
         )}
         {messages.map((msg) => (
-          <MessageBubble key={msg.id} role={msg.role} content={msg.content} reasoning={msg.reasoning} streaming={msg.streaming} />
+          <MessageBubble
+            key={msg.id}
+            role={msg.role}
+            content={msg.content}
+            reasoning={msg.reasoning}
+            streaming={msg.streaming}
+          />
         ))}
         <div ref={bottomRef} />
       </div>
 
-      <div className="shrink-0 border-t border-border p-3 bg-card/50">
-        <div className="flex gap-2 items-end">
-          <textarea
-            ref={textareaRef}
-            className="flex-1 resize-none rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-            placeholder={sessionId ? "Ask OpenCode something..." : "Start the server first..."}
-            rows={1}
+      <div className="shrink-0 border-t border-primary/10 px-4 py-3">
+        <div className="flex items-center gap-2">
+          <span className="font-mono text-sm text-primary/40 shrink-0">{">"}</span>
+          <input
+            ref={inputRef}
+            type="text"
+            className="flex-1 bg-transparent font-mono text-sm text-foreground placeholder:text-muted-foreground/30 focus:outline-none"
+            placeholder={sessionId ? "ask opencode..." : "start the server first..."}
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
             disabled={!sessionId}
           />
-          <Button size="icon-sm" onClick={handleSend} disabled={!sessionId || !input.trim()}>
-            <Send className="size-4" />
-          </Button>
         </div>
       </div>
-    </>
+    </div>
   )
 }
