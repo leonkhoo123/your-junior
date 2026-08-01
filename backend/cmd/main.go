@@ -15,6 +15,7 @@ import (
 	"your-junior/internal/config"
 	"your-junior/internal/controller"
 	"your-junior/internal/logger"
+	"your-junior/internal/opencode"
 	"your-junior/internal/repository"
 	"your-junior/ui"
 
@@ -119,6 +120,17 @@ func main() {
 	}
 	defer authInstance.Shutdown()
 
+	ocConfig := opencode.DefaultConfig()
+	ocManager := opencode.NewManager(ocConfig)
+	defer func() {
+		if err := ocManager.Stop(); err != nil {
+			logger.L.Warn("error stopping opencode", "error", err)
+		}
+	}()
+
+	ocHub := opencode.NewHub()
+	go ocHub.Run()
+
 	controller.StartLimiterCleanup()
 	controller.ConfigureTrustedProxies(cfg.Auth.TrustedProxyCIDRs, cfg.Server.AppEnv)
 
@@ -126,6 +138,8 @@ func main() {
 	controller.SetupMobileAuthRoutes(router, cfg, authInstance, authCfg)
 	controller.SetupAuthenticatedRoutes(router, authInstance, authCfg)
 	controller.SetupAdminRoutes(router, authInstance, authCfg)
+
+	controller.SetupOpencodeRoutes(router, cfg, ocManager, ocHub)
 
 	distFS, err := fs.Sub(ui.Assets, "dist")
 	if err != nil {

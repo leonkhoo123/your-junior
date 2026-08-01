@@ -40,7 +40,12 @@ var AppConfig *CloudConfig
 func Load() *CloudConfig {
 	envPath := resolveEnvPath()
 	if err := godotenv.Load(envPath); err != nil {
-		logger.L.Warn("no .env file found, using built-in defaults")
+		logger.L.Warn("failed to load .env file, using built-in defaults",
+			"path", envPath,
+			"error", err.Error(),
+		)
+	} else {
+		logger.L.Debug("loaded .env file", "path", envPath)
 	}
 	checkEnvPermissions(envPath)
 
@@ -94,8 +99,10 @@ func Load() *CloudConfig {
 }
 
 func resolveEnvPath() string {
-	if _, err := os.Stat("../.env"); err == nil {
-		return "../.env"
+	for _, p := range []string{"../.env", "../../.env", ".env"} {
+		if _, err := os.Stat(p); err == nil {
+			return p
+		}
 	}
 	return ".env"
 }

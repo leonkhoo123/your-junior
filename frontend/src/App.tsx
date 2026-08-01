@@ -5,6 +5,8 @@ import { useEffect, lazy, Suspense, useRef, useState } from 'react';
 import { AuthGate } from './components/auth/AuthGate';
 import { VerificationScreen } from './components/auth/VerificationScreen';
 import { getSetupStatus } from './api/api-auth';
+import { wsClient } from './api/wsClient';
+import { logger } from './utils/logger';
 
 const HomePage = lazy(() => import('./pages/HomePage'));
 const IndexPage = lazy(() => import('./pages/IndexPage'));
@@ -21,8 +23,11 @@ function App() {
   navigateRef.current = navigate;
   const [setupChecked, setSetupChecked] = useState(false);
 
+  logger.info("App mounted");
+
   useEffect(() => {
     const handleAuthUnauthorized = () => {
+      logger.warn("auth:unauthorized event received, redirecting to /login");
       if (window.location.pathname !== '/login') {
         void navigateRef.current('/login', { replace: true });
       }
@@ -33,18 +38,33 @@ function App() {
 
   useEffect(() => {
     if (window.location.pathname === '/setup') {
+      logger.debug("Already on /setup, skipping setup status check");
       setSetupChecked(true);
       return;
     }
     getSetupStatus()
       .then((res) => {
         if (res.setup_required) {
+          logger.info("Setup required, redirecting to /setup");
           void navigateRef.current('/setup', { replace: true });
+        } else {
+          logger.debug("Setup not required");
         }
       })
-      .catch(() => undefined)
+      .catch((err) => {
+        logger.warn("Failed to check setup status", { error: String(err) });
+      })
       .finally(() => { setSetupChecked(true); });
   }, []);
+
+  useEffect(() => {
+    logger.info("Initiating WebSocket connection");
+    wsClient.connect()
+    return () => {
+      logger.info("App unmounting, disconnecting WebSocket");
+      wsClient.disconnect()
+    }
+  }, [])
 
   if (!setupChecked) {
     return <AppLoadingFallback />;

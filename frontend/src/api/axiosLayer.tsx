@@ -1,6 +1,7 @@
 import axios, { AxiosError } from 'axios';
 import type { AxiosRequestConfig } from 'axios';
 import { getConfig } from '../config';
+import { logger } from '../utils/logger';
 
 const instance = axios.create({
   withCredentials: true,
@@ -8,8 +9,70 @@ const instance = axios.create({
 
 instance.interceptors.request.use((config) => {
   config.baseURL ??= getConfig().apiBaseUrl;
+  logger.debug(`HTTP ${config.method?.toUpperCase()} ${config.baseURL ?? ''}${config.url ?? ''}`, {});
   return config;
 });
+
+instance.interceptors.response.use(
+  (response) => {
+    logger.debug(`HTTP ${response.status} ${response.config.method?.toUpperCase()} ${response.config.url ?? ''}`, {});
+    return response;
+  },
+  async (error: AxiosError) => {
+    const originalRequest = error.config as CustomAxiosRequestConfig | undefined;
+
+    if (error.response?.status === 403) {
+      const data = error.response.data as ApiErrorResponse | undefined;
+      if (data?.error === 'mfa_setup_required') {
+        if (!window.location.pathname.includes('/login')) {
+           window.location.href = '/login?mfa_setup_required=true';
+        }
+        return Promise.reject(error);
+      }
+    }
+
+    if (error.response?.status === 401 && originalRequest && !originalRequest._retry && originalRequest.url && !originalRequest.url.includes('/refresh') && !originalRequest.url.includes('/login') && !originalRequest.url.includes('/mfa/verify') && !originalRequest.url.includes('/mfa/recovery') && !originalRequest.url.includes('/auth/mfa/confirm') && !originalRequest.url.includes('/logout')) {
+
+      if (isRefreshing) {
+        return new Promise(function(resolve, reject) {
+          failedQueue.push({ resolve, reject });
+        }).then(() => {
+          return instance(originalRequest);
+        }).catch((err: unknown) => {
+          return Promise.reject(err instanceof Error ? err : new Error(String(err)));
+        });
+      }
+
+      originalRequest._retry = true;
+      isRefreshing = true;
+      authChannel?.postMessage({ type: 'REFRESH_START' } satisfies AuthChannelMessage);
+
+      logger.info("Token refresh started", {});
+
+      try {
+        await instance.post('/refresh', null, { withCredentials: true });
+        processQueue(null);
+        authChannel?.postMessage({ type: 'REFRESH_DONE' } satisfies AuthChannelMessage);
+        logger.info("Token refresh succeeded", {});
+        return await instance(originalRequest);
+      } catch (err: unknown) {
+        const error = err instanceof Error ? err : new Error(String(err));
+        processQueue(error, null);
+        authChannel?.postMessage({ type: 'REFRESH_FAILED', errorMessage: error.message } satisfies AuthChannelMessage);
+        logger.error("Token refresh failed", { error: error.message });
+        window.dispatchEvent(new Event('auth:unauthorized'));
+        return await Promise.reject(error);
+      } finally {
+        isRefreshing = false;
+      }
+    }
+
+    logger.warn(`HTTP ${error.response?.status} ${error.config?.method?.toUpperCase()} ${error.config?.url ?? ''}`, {
+      error: getErrorMessage(error.response?.data),
+    });
+    return Promise.reject(error);
+  }
+);
 
 let isRefreshing = false;
 let failedQueue: { resolve: (value?: unknown) => void, reject: (reason?: unknown) => void }[] = [];
@@ -66,57 +129,6 @@ function getErrorMessage(data: unknown): string {
   }
   return 'An unexpected error occurred';
 }
-
-instance.interceptors.response.use(
-  (response) => response,
-  async (error: AxiosError) => {
-    const originalRequest = error.config as CustomAxiosRequestConfig | undefined;
-
-    if (error.response?.status === 403) {
-      const data = error.response.data as ApiErrorResponse | undefined;
-      if (data?.error === 'mfa_setup_required') {
-        if (!window.location.pathname.includes('/login')) {
-           window.location.href = '/login?mfa_setup_required=true';
-        }
-        return Promise.reject(error);
-      }
-    }
-
-    if (error.response?.status === 401 && originalRequest && !originalRequest._retry && originalRequest.url && !originalRequest.url.includes('/refresh') && !originalRequest.url.includes('/login') && !originalRequest.url.includes('/mfa/verify') && !originalRequest.url.includes('/mfa/recovery') && !originalRequest.url.includes('/auth/mfa/confirm') && !originalRequest.url.includes('/logout')) {
-
-      if (isRefreshing) {
-        return new Promise(function(resolve, reject) {
-          failedQueue.push({ resolve, reject });
-        }).then(() => {
-          return instance(originalRequest);
-        }).catch((err: unknown) => {
-          return Promise.reject(err instanceof Error ? err : new Error(String(err)));
-        });
-      }
-
-      originalRequest._retry = true;
-      isRefreshing = true;
-      authChannel?.postMessage({ type: 'REFRESH_START' } satisfies AuthChannelMessage);
-
-      try {
-        await instance.post('/refresh', null, { withCredentials: true });
-        processQueue(null);
-        authChannel?.postMessage({ type: 'REFRESH_DONE' } satisfies AuthChannelMessage);
-        return await instance(originalRequest);
-      } catch (err: unknown) {
-        const error = err instanceof Error ? err : new Error(String(err));
-        processQueue(error, null);
-        authChannel?.postMessage({ type: 'REFRESH_FAILED', errorMessage: error.message } satisfies AuthChannelMessage);
-        window.dispatchEvent(new Event('auth:unauthorized'));
-        return await Promise.reject(error);
-      } finally {
-        isRefreshing = false;
-      }
-    }
-
-    return Promise.reject(error);
-  }
-);
 
 export { getErrorMessage };
 export default instance;
