@@ -188,6 +188,58 @@ func (p *SSEProxy) extractTypeFromJSON(rawData string) string {
 	return t
 }
 
+func (p *SSEProxy) broadcastToolPart(sessionID, messageID string, part map[string]any) {
+	l := logger.L.With("component", "sse_proxy", "method", "broadcastToolPart")
+	tool, _ := part["tool"].(string)
+	callID, _ := part["callID"].(string)
+	partID, _ := part["id"].(string)
+	state, _ := part["state"].(map[string]any)
+
+	payload := map[string]any{
+		"session_id": sessionID,
+		"message_id": messageID,
+		"part_id":    partID,
+		"tool":       tool,
+		"call_id":    callID,
+	}
+
+	if state != nil {
+		status, _ := state["status"].(string)
+		payload["status"] = status
+		if input, ok := state["input"].(map[string]any); ok {
+			payload["input"] = input
+		}
+		if title, ok := state["title"].(string); ok {
+			payload["title"] = title
+		}
+		if metadata, ok := state["metadata"].(map[string]any); ok {
+			payload["metadata"] = metadata
+		}
+		if status == "completed" {
+			if output, ok := state["output"].(string); ok {
+				payload["output"] = output
+			}
+		}
+		if status == "running" || status == "completed" {
+			if timeData, ok := state["time"].(map[string]any); ok {
+				payload["time"] = timeData
+			}
+		}
+		if status == "error" {
+			if errMsg, ok := state["error"].(string); ok {
+				payload["error"] = errMsg
+			}
+		}
+	}
+
+	l.Debug("broadcasting tool part", "tool", tool, "status", payload["status"], "sessionID", sessionID)
+
+	p.hub.Broadcast(WSMessage{
+		Type: WSTypePartUpdated,
+		Data: payload,
+	})
+}
+
 func (p *SSEProxy) handleEvent(eventType, rawData, jsonType string) {
 	if eventType == "" && jsonType != "" {
 		eventType = jsonType
@@ -210,6 +262,7 @@ func (p *SSEProxy) handleEvent(eventType, rawData, jsonType string) {
 		delta, _ := props["delta"].(string)
 		partType, _ := props["type"].(string)
 		messageID, _ := props["messageID"].(string)
+		sessionID, _ := props["sessionID"].(string)
 
 		if partID == "" {
 			partID = "_default"
@@ -225,7 +278,7 @@ func (p *SSEProxy) handleEvent(eventType, rawData, jsonType string) {
 			partType = p.partTypes[partID]
 		}
 
-		l.Debug("part.delta details", "partID", partID, "type", partType, "messageID", messageID, "delta_preview", delta[:min(len(delta), 50)])
+		l.Debug("part.delta details", "partID", partID, "type", partType, "messageID", messageID, "sessionID", sessionID, "delta_preview", delta[:min(len(delta), 50)])
 
 		if delta == "" {
 			return
@@ -244,10 +297,11 @@ func (p *SSEProxy) handleEvent(eventType, rawData, jsonType string) {
 			p.hub.Broadcast(WSMessage{
 				Type: WSTypeChatMessage,
 				Data: map[string]any{
-					"event":     eventType,
-					"text":      textContent,
-					"reasoning": p.partAccReasoning[partID],
-					"streaming": true,
+					"session_id": sessionID,
+					"event":      eventType,
+					"text":       textContent,
+					"reasoning":  p.partAccReasoning[partID],
+					"streaming":  true,
 				},
 			})
 			return
@@ -262,10 +316,11 @@ func (p *SSEProxy) handleEvent(eventType, rawData, jsonType string) {
 		p.hub.Broadcast(WSMessage{
 			Type: WSTypeChatMessage,
 			Data: map[string]any{
-				"event":     eventType,
-				"text":      stripThinkingTags(p.partAccText[partID]),
-				"reasoning": reasoningContent,
-				"streaming": true,
+				"session_id": sessionID,
+				"event":      eventType,
+				"text":       stripThinkingTags(p.partAccText[partID]),
+				"reasoning":  reasoningContent,
+				"streaming":  true,
 			},
 		})
 
@@ -287,7 +342,8 @@ func (p *SSEProxy) handleEvent(eventType, rawData, jsonType string) {
 		partType, _ := part["type"].(string)
 		partID, _ := part["id"].(string)
 		messageID, _ := part["messageID"].(string)
-		l.Debug("part.updated details", "partID", partID, "type", partType, "messageID", messageID, "keys", getMapKeys(part))
+		sessionID, _ := part["sessionID"].(string)
+		l.Debug("part.updated details", "partID", partID, "type", partType, "messageID", messageID, "sessionID", sessionID, "keys", getMapKeys(part))
 
 		if partID == "" {
 			partID = "_default"
@@ -307,6 +363,12 @@ func (p *SSEProxy) handleEvent(eventType, rawData, jsonType string) {
 			return
 		}
 
+		// Forward tool parts as structured events
+		if partType == "tool" {
+			p.broadcastToolPart(sessionID, messageID, part)
+			return
+		}
+
 		text, _ := part["text"].(string)
 		snapshot, _ := part["snapshot"].(string)
 		content := text
@@ -321,10 +383,11 @@ func (p *SSEProxy) handleEvent(eventType, rawData, jsonType string) {
 				p.hub.Broadcast(WSMessage{
 					Type: WSTypeChatMessage,
 					Data: map[string]any{
-						"event":     eventType,
-						"text":      textContent,
-						"reasoning": content,
-						"streaming": true,
+						"session_id": sessionID,
+						"event":      eventType,
+						"text":       textContent,
+						"reasoning":  content,
+						"streaming":  true,
 					},
 				})
 			}
@@ -342,10 +405,11 @@ func (p *SSEProxy) handleEvent(eventType, rawData, jsonType string) {
 			p.hub.Broadcast(WSMessage{
 				Type: WSTypeChatMessage,
 				Data: map[string]any{
-					"event":     eventType,
-					"text":      stripThinkingTags(content),
-					"reasoning": reasoningContent,
-					"streaming": true,
+					"session_id": sessionID,
+					"event":      eventType,
+					"text":       stripThinkingTags(content),
+					"reasoning":  reasoningContent,
+					"streaming":  true,
 				},
 			})
 		}
@@ -367,8 +431,9 @@ func (p *SSEProxy) handleEvent(eventType, rawData, jsonType string) {
 		}
 		role, _ := info["role"].(string)
 		messageID, _ := info["id"].(string)
+		sessionID, _ := info["sessionID"].(string)
 		parts, _ := info["parts"].([]any)
-		l.Debug("message.updated details", "role", role, "messageID", messageID, "parts_count", len(parts))
+		l.Debug("message.updated details", "role", role, "messageID", messageID, "sessionID", sessionID, "parts_count", len(parts))
 
 		// Track message role
 		if messageID != "" && role != "" {
@@ -446,10 +511,11 @@ func (p *SSEProxy) handleEvent(eventType, rawData, jsonType string) {
 			p.hub.Broadcast(WSMessage{
 				Type: WSTypeChatMessage,
 				Data: map[string]any{
-					"event":     eventType,
-					"text":      stripThinkingTags(content),
-					"reasoning": reasoningContent,
-					"streaming": true,
+					"session_id": sessionID,
+					"event":      eventType,
+					"text":       stripThinkingTags(content),
+					"reasoning":  reasoningContent,
+					"streaming":  true,
 				},
 			})
 		}

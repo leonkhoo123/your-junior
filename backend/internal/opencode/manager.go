@@ -128,6 +128,11 @@ func (m *Manager) GetModel() string {
 	return m.cfg.Model
 }
 
+func (m *Manager) SetModel(model string) {
+	m.cfg.Model = model
+	logger.L.Info("model updated", "model", model)
+}
+
 func (m *Manager) waitForReady(ctx context.Context) error {
 	timeout := 10 * time.Second
 	deadline := time.After(timeout)

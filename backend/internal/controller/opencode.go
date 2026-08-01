@@ -23,6 +23,7 @@ func SetupOpencodeRoutes(router *gin.Engine, cfg *config.CloudConfig, ocManager 
 	})
 
 	router.GET("/api/opencode/status", handler.status)
+	router.GET("/api/opencode/providers", handler.providers)
 }
 
 type opencodeRouteHandler struct {
@@ -44,6 +45,31 @@ func (h *opencodeRouteHandler) status(c *gin.Context) {
 			"status": s,
 			"model":  h.manager.GetModel(),
 		},
+	})
+}
+
+func (h *opencodeRouteHandler) providers(c *gin.Context) {
+	if !h.manager.IsRunning() || h.client == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{
+			"status":  "error",
+			"message": "opencode server not running",
+		})
+		return
+	}
+
+	result, err := h.client.GetProvidersConfig()
+	if err != nil {
+		logger.L.Error("failed to get providers", "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"status":  "error",
+			"message": "failed to get providers: " + err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"status": "success",
+		"data":   result,
 	})
 }
 
@@ -100,6 +126,126 @@ func (h *opencodeRouteHandler) handleCommand(client *opencode.WSClient, msg open
 			Type: opencode.WSTypeServerStatus,
 			Data: map[string]any{"status": "stopped"},
 		})
+
+	case opencode.WSTypeGetProviders:
+		l.Info("handling command")
+		if h.client == nil {
+			h.hub.BroadcastTo(client, opencode.WSMessage{
+				Type: opencode.WSTypeError,
+				Data: map[string]any{"message": "opencode server not running"},
+			})
+			return
+		}
+		result, err := h.client.GetProvidersConfig()
+		if err != nil {
+			l.Error("failed to get providers", "error", err)
+			h.hub.BroadcastTo(client, opencode.WSMessage{
+				Type: opencode.WSTypeError,
+				Data: map[string]any{"message": "failed to get providers: " + err.Error()},
+			})
+			return
+		}
+		h.hub.BroadcastTo(client, opencode.WSMessage{
+			Type: opencode.WSTypeProvidersList,
+			Data: map[string]any{
+				"providers": result.Providers,
+				"default":   result.Default,
+			},
+		})
+
+	case opencode.WSTypeSetModel:
+		model, _ := msg.Data["model"].(string)
+		variant, _ := msg.Data["variant"].(string)
+		l.Info("handling command", "model", model, "variant", variant)
+
+		if model == "" {
+			h.hub.BroadcastTo(client, opencode.WSMessage{
+				Type: opencode.WSTypeError,
+				Data: map[string]any{"message": "model is required"},
+			})
+			return
+		}
+		if h.client == nil {
+			h.hub.BroadcastTo(client, opencode.WSMessage{
+				Type: opencode.WSTypeError,
+				Data: map[string]any{"message": "opencode server not running"},
+			})
+			return
+		}
+
+		configModel := model
+		if variant != "" {
+			configModel = model + "@" + variant
+		}
+
+		if err := h.client.SetConfig(opencode.ConfigPayload{Model: configModel}); err != nil {
+			l.Error("failed to set model config", "error", err)
+			h.hub.BroadcastTo(client, opencode.WSMessage{
+				Type: opencode.WSTypeError,
+				Data: map[string]any{"message": "failed to set model: " + err.Error()},
+			})
+			return
+		}
+
+		if err := h.client.DisposeInstance(); err != nil {
+			l.Warn("failed to dispose instance after model change", "error", err)
+		}
+
+		h.manager.SetModel(configModel)
+		h.session = ""
+
+		h.hub.Broadcast(opencode.WSMessage{
+			Type: opencode.WSTypeModelChanged,
+			Data: map[string]any{
+				"model":   model,
+				"variant": variant,
+			},
+		})
+
+	case opencode.WSTypeSetAuthKey:
+		providerID, _ := msg.Data["provider_id"].(string)
+		apiKey, _ := msg.Data["api_key"].(string)
+		l.Info("handling command", "provider", providerID)
+
+		if providerID == "" || apiKey == "" {
+			h.hub.BroadcastTo(client, opencode.WSMessage{
+				Type: opencode.WSTypeError,
+				Data: map[string]any{"message": "provider_id and api_key are required"},
+			})
+			return
+		}
+		if h.client == nil {
+			h.hub.BroadcastTo(client, opencode.WSMessage{
+				Type: opencode.WSTypeError,
+				Data: map[string]any{"message": "opencode server not running"},
+			})
+			return
+		}
+
+		if err := h.client.SetAuth(providerID, apiKey); err != nil {
+			l.Error("failed to set auth key", "error", err)
+			h.hub.BroadcastTo(client, opencode.WSMessage{
+				Type: opencode.WSTypeError,
+				Data: map[string]any{"message": "failed to set API key: " + err.Error()},
+			})
+			return
+		}
+
+		if err := h.client.DisposeInstance(); err != nil {
+			l.Warn("failed to dispose instance after auth", "error", err)
+		}
+
+		h.session = ""
+
+		h.hub.Broadcast(opencode.WSMessage{
+			Type: opencode.WSTypeServerStatus,
+			Data: map[string]any{
+				"status": "running",
+				"model":  h.manager.GetModel(),
+			},
+		})
+
+		l.Info("auth key set and instance disposed", "provider", providerID)
 
 	case opencode.WSTypeCreateSession:
 		l.Info("handling command")

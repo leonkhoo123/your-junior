@@ -42,6 +42,41 @@ type Provider struct {
 	Name string `json:"name"`
 }
 
+type ModelInfo struct {
+	ID          string                   `json:"id"`
+	Name        string                   `json:"name"`
+	ProviderID  string                   `json:"provider_id"`
+	Cost        *ModelCost               `json:"cost,omitempty"`
+	Variants    map[string]any           `json:"variants,omitempty"`
+	ReleaseDate string                   `json:"release_date,omitempty"`
+	Status      string                   `json:"status,omitempty"`
+	Capabilities *ModelCapabilities      `json:"capabilities,omitempty"`
+}
+
+type ModelCost struct {
+	Input  float64 `json:"input"`
+	Output float64 `json:"output"`
+}
+
+type ModelCapabilities struct {
+	Reasoning bool `json:"reasoning"`
+}
+
+type ProvidersConfigResponse struct {
+	Providers []ProviderConfig `json:"providers"`
+	Default   map[string]string `json:"default"`
+}
+
+type ProviderConfig struct {
+	ID     string               `json:"id"`
+	Name   string               `json:"name"`
+	Models map[string]ModelInfo `json:"models"`
+}
+
+type ConfigPayload struct {
+	Model string `json:"model,omitempty"`
+}
+
 func NewClient(baseURL string) *Client {
 	logger.L.Info("creating opencode HTTP client", "base_url", baseURL)
 	return &Client{
@@ -194,6 +229,119 @@ func (c *Client) GetProviders() ([]Provider, error) {
 
 	l.Debug("providers fetched", "count", len(providerResp.Providers))
 	return providerResp.Providers, nil
+}
+
+func (c *Client) GetProvidersConfig() (*ProvidersConfigResponse, error) {
+	l := logger.L.With("component", "opencode_client", "method", "GetProvidersConfig")
+	resp, err := c.httpClient.Get(c.baseURL + "/config/providers")
+	if err != nil {
+		l.Error("request failed", "error", err)
+		return nil, fmt.Errorf("get providers config request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		l.Error("non-OK response", "status", resp.StatusCode, "body", string(bodyBytes))
+		return nil, fmt.Errorf("get providers config returned %d: %s", resp.StatusCode, string(bodyBytes))
+	}
+
+	var result ProvidersConfigResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		l.Error("failed to decode response", "error", err)
+		return nil, fmt.Errorf("failed to decode providers config response: %w", err)
+	}
+
+	l.Debug("providers config fetched", "count", len(result.Providers))
+	return &result, nil
+}
+
+func (c *Client) SetConfig(payload ConfigPayload) error {
+	l := logger.L.With("component", "opencode_client", "method", "SetConfig")
+	jsonBody, _ := json.Marshal(payload)
+
+	url := c.baseURL + "/config"
+	l.Debug("sending request", "url", url, "payload", string(jsonBody))
+
+	req, err := http.NewRequest(http.MethodPut, url, bytes.NewReader(jsonBody))
+	if err != nil {
+		return fmt.Errorf("create set config request failed: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		l.Error("request failed", "error", err)
+		return fmt.Errorf("set config request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		l.Error("non-OK response", "status", resp.StatusCode, "body", string(bodyBytes))
+		return fmt.Errorf("set config returned %d: %s", resp.StatusCode, string(bodyBytes))
+	}
+
+	l.Info("config updated")
+	return nil
+}
+
+func (c *Client) DisposeInstance() error {
+	l := logger.L.With("component", "opencode_client", "method", "DisposeInstance")
+	url := c.baseURL + "/instance/dispose"
+	l.Debug("sending request", "url", url)
+
+	resp, err := c.httpClient.Post(url, "application/json", nil)
+	if err != nil {
+		l.Error("request failed", "error", err)
+		return fmt.Errorf("dispose instance request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		l.Error("non-OK response", "status", resp.StatusCode, "body", string(bodyBytes))
+		return fmt.Errorf("dispose instance returned %d: %s", resp.StatusCode, string(bodyBytes))
+	}
+
+	l.Info("instance disposed")
+	return nil
+}
+
+func (c *Client) SetAuth(providerID, apiKey string) error {
+	l := logger.L.With("component", "opencode_client", "method", "SetAuth")
+	body := map[string]any{
+		"auth": map[string]any{
+			"type": "api",
+			"key":  apiKey,
+		},
+	}
+	jsonBody, _ := json.Marshal(body)
+
+	url := fmt.Sprintf("%s/auth/%s", c.baseURL, providerID)
+	l.Debug("sending request", "url", url)
+
+	req, err := http.NewRequest(http.MethodPut, url, bytes.NewReader(jsonBody))
+	if err != nil {
+		return fmt.Errorf("create set auth request failed: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		l.Error("request failed", "error", err)
+		return fmt.Errorf("set auth request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		l.Error("non-OK response", "status", resp.StatusCode, "body", string(bodyBytes))
+		return fmt.Errorf("set auth returned %d: %s", resp.StatusCode, string(bodyBytes))
+	}
+
+	l.Info("auth set", "provider", providerID)
+	return nil
 }
 
 func (c *Client) AbortSession(sessionID string) error {

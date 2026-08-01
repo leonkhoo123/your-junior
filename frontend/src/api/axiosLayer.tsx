@@ -9,13 +9,13 @@ const instance = axios.create({
 
 instance.interceptors.request.use((config) => {
   config.baseURL ??= getConfig().apiBaseUrl;
-  logger.debug(`HTTP ${config.method?.toUpperCase()} ${config.baseURL ?? ''}${config.url ?? ''}`, {});
+  logger.debug(`HTTP ${config.method?.toUpperCase() ?? ''} ${config.baseURL ?? ''}${config.url ?? ''}`, {});
   return config;
 });
 
 instance.interceptors.response.use(
   (response) => {
-    logger.debug(`HTTP ${response.status} ${response.config.method?.toUpperCase()} ${response.config.url ?? ''}`, {});
+    logger.debug(`HTTP ${String(response.status)} ${response.config.method?.toUpperCase() ?? ''} ${response.config.url ?? ''}`, {});
     return response;
   },
   async (error: AxiosError) => {
@@ -67,7 +67,7 @@ instance.interceptors.response.use(
       }
     }
 
-    logger.warn(`HTTP ${error.response?.status} ${error.config?.method?.toUpperCase()} ${error.config?.url ?? ''}`, {
+    logger.warn(`HTTP ${String(error.response?.status ?? '')} ${error.config?.method?.toUpperCase() ?? ''} ${error.config?.url ?? ''}`, {
       error: getErrorMessage(error.response?.data),
     });
     return Promise.reject(error);

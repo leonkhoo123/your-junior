@@ -33,12 +33,18 @@ const (
 	WSTypeStopServer    WSMessageType = "stop_server"
 	WSTypeSendMessage   WSMessageType = "send_message"
 	WSTypeCreateSession WSMessageType = "create_session"
+	WSTypeGetProviders  WSMessageType = "get_providers"
+	WSTypeSetModel      WSMessageType = "set_model"
+	WSTypeSetAuthKey    WSMessageType = "set_auth_key"
 
 	WSTypeServerStatus   WSMessageType = "server_status"
 	WSTypeSessionCreated WSMessageType = "session_created"
 	WSTypeChatMessage    WSMessageType = "chat_message"
 	WSTypeChatComplete   WSMessageType = "chat_complete"
+	WSTypeProvidersList  WSMessageType = "providers_list"
+	WSTypeModelChanged   WSMessageType = "model_changed"
 	WSTypeError          WSMessageType = "error"
+	WSTypePartUpdated    WSMessageType = "part_updated"
 )
 
 type WSMessage struct {

@@ -51,7 +51,7 @@ function App() {
           logger.debug("Setup not required");
         }
       })
-      .catch((err) => {
+      .catch((err: unknown) => {
         logger.warn("Failed to check setup status", { error: String(err) });
       })
       .finally(() => { setSetupChecked(true); });

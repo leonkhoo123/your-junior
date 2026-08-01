@@ -2,7 +2,7 @@ import { logger } from "@/utils/logger"
 
 export type WSStatus = "disconnected" | "connecting" | "connected"
 
-type WSMessage = {
+interface WSMessage {
   type: string
   data?: Record<string, unknown>
 }
@@ -20,8 +20,8 @@ function getWsUrl(): string {
 
 class WebSocketClient {
   private socket: WebSocket | null = null
-  private listeners: Set<MessageHandler> = new Set()
-  private statusListeners: Set<StatusHandler> = new Set()
+  private listeners = new Set<MessageHandler>()
+  private statusListeners = new Set<StatusHandler>()
   private reconnectTimer: number | null = null
   private pingTimer: number | null = null
   private reconnectAttempts = 0
@@ -39,7 +39,7 @@ class WebSocketClient {
     if (prev !== s) {
       logger.info(`WebSocket status: ${prev} -> ${s}`)
     }
-    this.statusListeners.forEach((fn) => fn(s))
+    this.statusListeners.forEach((fn) => { fn(s) })
   }
 
   connect() {
@@ -66,8 +66,8 @@ class WebSocketClient {
       try {
         const msg = JSON.parse(event.data as string) as WSMessage
         logger.debug("WS received", { type: msg.type, dataKeys: msg.data ? Object.keys(msg.data) : [] })
-        this.listeners.forEach((fn) => fn(msg))
-      } catch (err) {
+        this.listeners.forEach((fn) => { fn(msg) })
+      } catch {
         logger.warn("WS failed to parse message", { raw: String(event.data).slice(0, 200) })
       }
     }
@@ -81,14 +81,14 @@ class WebSocketClient {
       if (this.reconnectAttempts < this.maxReconnectAttempts) {
         this.reconnectAttempts++
         const delay = Math.min(2000 * Math.pow(1.5, this.reconnectAttempts), 15000)
-        logger.info(`WebSocket reconnecting in ${delay}ms`, { attempt: this.reconnectAttempts, maxAttempts: this.maxReconnectAttempts })
-        this.reconnectTimer = window.setTimeout(() => this.connect(), delay)
+        logger.info(`WebSocket reconnecting in ${String(delay)}ms`, { attempt: this.reconnectAttempts, maxAttempts: this.maxReconnectAttempts })
+        this.reconnectTimer = window.setTimeout(() => { this.connect() }, delay)
       } else {
         logger.error("WebSocket max reconnect attempts reached")
       }
     }
 
-    ws.onerror = (_event) => {
+    ws.onerror = () => {
       logger.warn("WebSocket error event fired")
     }
 

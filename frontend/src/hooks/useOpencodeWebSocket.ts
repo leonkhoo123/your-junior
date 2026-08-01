@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from "react"
 import { wsClient } from "@/api/wsClient"
 import type { WSStatus } from "@/api/wsClient"
 
-type WSMessage = {
+interface WSMessage {
   type: string
   data?: Record<string, unknown>
 }

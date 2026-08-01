@@ -6,9 +6,10 @@ interface ChatPanelProps {
   sessionId: string | null
   messages: DisplayMessage[]
   onSendMessage: (text: string) => void
+  onNavigateToChild?: (childSessionID: string) => void
 }
 
-export function ChatPanel({ sessionId, messages, onSendMessage }: ChatPanelProps) {
+export function ChatPanel({ sessionId, messages, onSendMessage, onNavigateToChild }: ChatPanelProps) {
   const [input, setInput] = useState("")
   const bottomRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -56,6 +57,8 @@ export function ChatPanel({ sessionId, messages, onSendMessage }: ChatPanelProps
             content={msg.content}
             reasoning={msg.reasoning}
             streaming={msg.streaming}
+            parts={msg.parts}
+            onNavigateToChild={onNavigateToChild}
           />
         ))}
         <div ref={bottomRef} />
@@ -70,7 +73,7 @@ export function ChatPanel({ sessionId, messages, onSendMessage }: ChatPanelProps
             className="flex-1 bg-transparent font-mono text-sm text-foreground placeholder:text-muted-foreground/30 focus:outline-none"
             placeholder={sessionId ? "ask opencode..." : "start the server first..."}
             value={input}
-            onChange={(e) => setInput(e.target.value)}
+            onChange={(e) => { setInput(e.target.value) }}
             onKeyDown={handleKeyDown}
             disabled={!sessionId}
           />

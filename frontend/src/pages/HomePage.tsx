@@ -14,6 +14,38 @@ import { useTheme } from "@/components/theme-provider"
 
 type ServerState = "stopped" | "starting" | "running" | "error"
 
+interface ModelInfo {
+  id: string
+  name: string
+  provider_id: string
+  cost?: { input: number; output: number }
+  variants?: Record<string, unknown>
+  release_date?: string
+  status?: string
+}
+
+interface ProviderConfig {
+  id: string
+  name: string
+  models: Record<string, ModelInfo>
+}
+
+interface StatusResponse {
+  status: string
+  data?: {
+    status: string
+    model: string
+  }
+}
+
+interface ProvidersResponse {
+  status: string
+  data?: {
+    providers: ProviderConfig[]
+    default?: Record<string, string>
+  }
+}
+
 function useLoggedState<T>(initial: T, label: string): [T, React.Dispatch<React.SetStateAction<T>>] {
   const [val, setVal] = useState<T>(initial)
   const setter: React.Dispatch<React.SetStateAction<T>> = (action) => {
@@ -37,9 +69,13 @@ export default function HomePage() {
 
   useEffect(() => {
     const mq = window.matchMedia("(prefers-color-scheme: dark)")
-    const handler = (e: MediaQueryListEvent) => setIsSystemDark(e.matches)
+    const handler = (e: MediaQueryListEvent) => {
+      setIsSystemDark(e.matches)
+    }
     mq.addEventListener("change", handler)
-    return () => mq.removeEventListener("change", handler)
+    return () => {
+      mq.removeEventListener("change", handler)
+    }
   }, [])
 
   const { status: wsStatus, send, on } = useOpencodeWebSocket()
@@ -47,6 +83,22 @@ export default function HomePage() {
   const [serverState, setServerState] = useLoggedState<ServerState>("stopped", "serverState")
   const [serverModel, setServerModel] = useLoggedState("deepseek/deepseek-v4-pro", "serverModel")
   const [sessionIds, setSessionIds] = useLoggedState<string[]>([], "sessionIds")
+  const [providers, setProviders] = useState<ProviderConfig[]>([])
+
+  const fetchProviders = useCallback(() => {
+    fetch(`${getConfig().apiBaseUrl}/opencode/providers`, { credentials: "include" })
+      .then((res) => res.json())
+      .then((json: unknown) => {
+        const data = json as ProvidersResponse
+        if (data.status === "success" && data.data?.providers) {
+          setProviders(data.data.providers)
+          logger.debug("providers loaded", { count: data.data.providers.length })
+        }
+      })
+      .catch((err: unknown) => {
+        logger.warn("Failed to fetch providers", { error: String(err) })
+      })
+  }, [])
 
   useEffect(() => {
     if (wsStatus !== "connected") return
@@ -54,17 +106,19 @@ export default function HomePage() {
     logger.debug("Fetching opencode status from REST API")
     fetch(`${getConfig().apiBaseUrl}/opencode/status`, { credentials: "include" })
       .then((res) => res.json())
-      .then((json) => {
-        logger.debug("opencode status response", { status: json.data?.status, model: json.data?.model })
-        if (json.data?.status === "running") {
+      .then((json: unknown) => {
+        const data = json as StatusResponse
+        logger.debug("opencode status response", { status: data.data?.status, model: data.data?.model })
+        if (data.data?.status === "running") {
           setServerState("running")
-          if (json.data.model) setServerModel(json.data.model)
+          if (data.data.model) setServerModel(data.data.model)
+          fetchProviders()
         }
       })
-      .catch((err) => {
+      .catch((err: unknown) => {
         logger.warn("Failed to fetch opencode status", { error: String(err) })
       })
-  }, [wsStatus, setServerState, setServerModel])
+  }, [wsStatus, setServerState, setServerModel, fetchProviders])
 
   useEffect(() => {
     const unsub = on("server_status", (msg) => {
@@ -73,13 +127,30 @@ export default function HomePage() {
       if (s === "running") {
         setServerState("running")
         if (msg.data?.model) setServerModel(msg.data.model as string)
+        fetchProviders()
       } else if (s === "stopped") {
         setServerState("stopped")
         setSessionIds([])
+        setProviders([])
       }
     })
     return unsub
-  }, [on, setServerState, setServerModel, setSessionIds])
+  }, [on, setServerState, setServerModel, setSessionIds, fetchProviders])
+
+  useEffect(() => {
+    const unsub = on("model_changed", (msg) => {
+      const model = msg.data?.model as string | undefined
+      const variant = msg.data?.variant as string | undefined
+      logger.info("Received model_changed", { model, variant })
+      if (model) {
+        const fullModel = variant ? `${model}@${variant}` : model
+        setServerModel(fullModel)
+        toast.success(`Model changed to ${model}`)
+        fetchProviders()
+      }
+    })
+    return unsub
+  }, [on, setServerModel, fetchProviders])
 
   useEffect(() => {
     if (serverState === "running" && sessionIds.length === 0 && wsStatus === "connected") {
@@ -101,9 +172,9 @@ export default function HomePage() {
 
   useEffect(() => {
     const unsub = on("error", (msg) => {
-      const message = (msg.data?.message as string) || "Unknown error"
+      const message = msg.data?.message as string | undefined
       logger.error("Received server error", { message })
-      toast.error(message)
+      toast.error(message ?? "Unknown error")
     })
     return unsub
   }, [on])
@@ -131,8 +202,31 @@ export default function HomePage() {
     [setSessionIds],
   )
 
+  const handleNavigateToChild = useCallback(
+    (childSessionID: string) => {
+      if (!sessionIds.includes(childSessionID)) {
+        setSessionIds((prev) => [...prev, childSessionID])
+      }
+    },
+    [sessionIds, setSessionIds],
+  )
+
+  const handleModelChange = useCallback(
+    (providerID: string, modelID: string, variant?: string) => {
+      const model = `${providerID}/${modelID}`
+      logger.info("Changing model", { model, variant })
+      send({
+        type: "set_model",
+        data: { model, variant },
+      })
+    },
+    [send],
+  )
+
   const handleLogout = () => {
-    void logout().finally(() => navigate("/login"))
+    void logout().finally(() => {
+      void navigate("/login")
+    })
   }
 
   return (
@@ -188,6 +282,10 @@ export default function HomePage() {
             send={send}
             on={on}
             label="Chat 1"
+            providers={providers}
+            currentModel={serverModel}
+            onModelChange={handleModelChange}
+            onNavigateToChild={handleNavigateToChild}
           />
         ) : (
           <div className="flex-1 flex flex-col gap-2 p-2 overflow-hidden">
@@ -213,8 +311,14 @@ export default function HomePage() {
                     sessionId={sid}
                     send={send}
                     on={on}
-                    label={`Chat ${i + 1}`}
-                    onClose={sessionIds.length > 1 ? () => handleClosePane(sid) : undefined}
+                    label={`Chat ${String(i + 1)}`}
+                    onClose={sessionIds.length > 1 ? () => {
+                      handleClosePane(sid)
+                    } : undefined}
+                    providers={providers}
+                    currentModel={serverModel}
+                    onModelChange={handleModelChange}
+                    onNavigateToChild={handleNavigateToChild}
                   />
                 </div>
               ))}
