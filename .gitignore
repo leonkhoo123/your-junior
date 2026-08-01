@@ -1,0 +1,39 @@
+# Binaries
+main
+server
+*.exe
+*.test
+*.out
+
+# Environment
+.env
+
+# Database
+db/
+backend/db/
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/dev-dist/
+
+# UI embed target
+backend/ui/dist/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Coverage
+coverage/
+*.coverprofile
+
+# Security audits
+docs/security/
+docs/security/*
