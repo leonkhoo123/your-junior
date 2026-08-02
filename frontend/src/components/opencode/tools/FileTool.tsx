@@ -50,33 +50,19 @@ export function EditTool({ part }: ToolProps) {
   const formattedPath = formatPath(filePath)
   const rawDiff = strVal(part.metadata?.diff) ?? strVal(part.output)
   const diffContent = cleanDiffMeta(rawDiff)
+  const hasDiff = part.status === "completed" && diffContent && isDiffContent(diffContent)
 
-  if (part.status === "error") {
-    return (
+  return (
+    <div>
       <InlineTool icon={"\u2190"} tool="edit" part={part}>
         Edit {formattedPath} {inputArgs(part.input ?? {}, ["filePath", "oldString", "newString"])}
       </InlineTool>
-    )
-  }
-
-  if (part.status === "completed" && diffContent && isDiffContent(diffContent)) {
-    return (
-      <BlockTool
-        title={`\u2190 Edit ${formattedPath}`}
-        part={part}
-      >
-        <DiffBlock
-          diffText={diffContent}
-          filename={filePath}
-        />
-      </BlockTool>
-    )
-  }
-
-  return (
-    <InlineTool icon={"\u2190"} tool="edit" part={part}>
-      Edit {formattedPath} {inputArgs(part.input ?? {}, ["filePath", "oldString", "newString"])}
-    </InlineTool>
+      {hasDiff && (
+        <div className="mt-1 ml-4 pl-3 border-l border-green-500/20">
+          <DiffBlock diffText={diffContent} filename={filePath} />
+        </div>
+      )}
+    </div>
   )
 }
 
