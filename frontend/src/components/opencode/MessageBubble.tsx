@@ -91,7 +91,7 @@ export function MessageBubble({
         </div>
       )}
       {parts && parts.length > 0 && (
-        <div className="mb-2 space-y-1">
+        <div className="mb-2 space-y-0">
           {parts.map((part) => (
             <ToolPart
               key={part.id}
