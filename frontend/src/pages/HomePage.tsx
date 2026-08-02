@@ -339,7 +339,7 @@ export default function HomePage() {
   return (
     <DefaultLayout>
       <header className="flex items-center justify-between px-4 py-2 border-b border-border bg-background/50 backdrop-blur-sm shrink-0">
-        <span className="text-sm font-medium text-muted-foreground truncate">
+        <span className="text-sm font-bold text-muted-foreground truncate">
           {serverName || "Your Junior"}
         </span>
         <div className="flex items-center gap-1.5">

@@ -52,7 +52,7 @@ export function SlashCommandMenu({
     <div className="absolute bottom-full left-4 right-4 mb-1 z-50">
       <div
         ref={listRef}
-        className="max-h-[240px] overflow-y-auto border border-primary/10 rounded-md bg-[#161b22] shadow-lg"
+        className="max-h-[240px] overflow-y-auto border border-primary/10 rounded-md bg-chat-header-bg shadow-lg"
       >
         {commands.map((cmd, i) => (
           <button

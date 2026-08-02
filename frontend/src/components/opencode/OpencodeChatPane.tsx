@@ -167,7 +167,7 @@ export function OpencodeChatPane({
 
   return (
     <div
-      className="flex flex-col flex-1 min-h-0 border border-primary/10 rounded-md overflow-hidden bg-[#0d1117]"
+      className="flex flex-col flex-1 min-h-0 border border-primary/10 rounded-md overflow-hidden bg-chat-bg"
       onMouseDown={(e) => {
         const target = e.target as HTMLElement
         if (target.closest("button, a, input, textarea, select, [contenteditable]")) return
@@ -175,8 +175,8 @@ export function OpencodeChatPane({
         e.currentTarget.querySelector<HTMLInputElement>("input")?.focus()
       }}
     >
-      <div className="flex items-center gap-2 px-4 py-1.5 border-b border-primary/10 bg-[#0d1117] shrink-0">
-        <span className="font-mono text-xs text-muted-foreground/50">
+      <div className="flex items-center gap-2 px-4 py-1.5 border-b border-primary/10 bg-chat-bg shrink-0">
+        <span className="font-mono text-xs font-semibold text-muted-foreground">
           {sessionTitle ?? "Chat"}
         </span>
         <div className="flex-1" />

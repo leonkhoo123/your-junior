@@ -9,7 +9,6 @@ interface MessageBubbleProps {
   role: "user" | "assistant" | "tool"
   content: string
   reasoning?: string
-  streaming?: boolean
   parts?: ToolPartData[]
   error?: string
   thinkingExpanded?: boolean
@@ -27,7 +26,6 @@ export function MessageBubble({
   role,
   content,
   reasoning,
-  streaming,
   parts,
   error,
   thinkingExpanded,
@@ -44,9 +42,8 @@ export function MessageBubble({
   if (role === "user") {
     return (
       <div className="py-2">
-        <div className="flex gap-2 font-mono text-sm">
-          <span className="text-primary/60 shrink-0">{">"}</span>
-          <span className="text-foreground/80 whitespace-pre-wrap break-words">
+        <div className="flex font-mono text-sm bg-slate-200 dark:bg-chat-header-bg border-l-[3px] border-foreground/30 rounded-r-sm min-w-0">
+          <span className="text-foreground whitespace-pre-wrap break-words px-3 py-2 min-w-0 w-full">
             {content}
           </span>
         </div>
@@ -64,7 +61,7 @@ export function MessageBubble({
     }
     return (
       <div className="py-1">
-        <div className="bg-muted/30 border-l-2 border-amber-500/30 pl-3 py-1.5 font-mono text-xs whitespace-pre-wrap break-words text-muted-foreground">
+        <div className="bg-muted/60 border-l-2 border-amber-500/50 pl-3 py-1.5 font-mono text-xs whitespace-pre-wrap break-words text-muted-foreground">
           {content}
         </div>
       </div>
@@ -77,7 +74,7 @@ export function MessageBubble({
         <div className="mb-2">
           <button
             onClick={() => { setReasoningOpen(!reasoningOpen) }}
-            className="flex items-center gap-1 text-muted-foreground/60 hover:text-muted-foreground transition-colors"
+            className="flex items-center gap-1 text-muted-foreground hover:text-foreground transition-colors"
           >
             {reasoningOpen ? (
               <ChevronDown className="size-3" />
@@ -87,7 +84,7 @@ export function MessageBubble({
             <span className="text-xs">Thinking</span>
           </button>
           {reasoningOpen && (
-            <div className="mt-1 whitespace-pre-wrap break-words text-xs text-muted-foreground/40 border-l border-muted-foreground/15 pl-2">
+            <div className="mt-1 whitespace-pre-wrap break-words text-xs text-muted-foreground border-l border-muted-foreground/30 pl-2">
               {reasoning}
             </div>
           )}
@@ -109,12 +106,9 @@ export function MessageBubble({
           {error}
         </div>
       )}
-      <div className="text-foreground/85">
+      <div className="text-foreground">
         <MarkdownRenderer content={content} />
       </div>
-      {streaming && (
-        <span className="inline-block w-2 h-[1.1em] bg-primary/60 ml-0.5 animate-pulse align-middle" />
-      )}
     </div>
   )
 }

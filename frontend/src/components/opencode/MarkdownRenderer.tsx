@@ -36,7 +36,7 @@ const components: Components = {
     if (!language && !childrenToText(children).includes("\n")) {
       return (
         <code
-          className="px-1 py-0.5 rounded bg-[#161b22] text-[#d2a8ff] text-[0.85em] font-mono break-all"
+          className="px-1 py-0.5 rounded bg-chat-inline-code-bg text-chat-inline-code-text text-[0.85em] font-mono break-all"
           {...props}
         >
           {children}
@@ -59,7 +59,7 @@ const components: Components = {
     return <ol className="list-decimal list-outside pl-6 mb-1.5 space-y-0.5">{children}</ol>
   },
   li({ children }) {
-    return <li className="text-foreground/85">{children}</li>
+    return <li className="text-foreground">{children}</li>
   },
   strong({ children }) {
     return <strong className="font-bold text-foreground">{children}</strong>
@@ -69,14 +69,14 @@ const components: Components = {
   },
   a({ href, children }) {
     return (
-      <a href={href} className="text-blue-400 underline decoration-blue-400/30 hover:decoration-blue-400" target="_blank" rel="noopener noreferrer">
+      <a href={href} className="text-blue-600 dark:text-blue-400 underline decoration-blue-600/30 dark:decoration-blue-400/30 hover:decoration-blue-600 dark:hover:decoration-blue-400" target="_blank" rel="noopener noreferrer">
         {children}
       </a>
     )
   },
   blockquote({ children }) {
     return (
-      <blockquote className="border-l-2 border-amber-500/30 pl-3 my-2 text-muted-foreground/80 italic">
+      <blockquote className="border-l-2 border-amber-500/40 pl-3 my-2 text-muted-foreground italic">
         {children}
       </blockquote>
     )
@@ -85,28 +85,28 @@ const components: Components = {
     return <h1 className="text-lg font-bold mb-2 mt-3 text-foreground">{children}</h1>
   },
   h2({ children }) {
-    return <h2 className="text-base font-bold mb-1.5 mt-2.5 text-foreground/95">{children}</h2>
+    return <h2 className="text-base font-bold mb-1.5 mt-2.5 text-foreground">{children}</h2>
   },
   h3({ children }) {
-    return <h3 className="text-sm font-bold mb-1.5 mt-2 text-foreground/90">{children}</h3>
+    return <h3 className="text-sm font-bold mb-1.5 mt-2 text-foreground">{children}</h3>
   },
   h4({ children }) {
-    return <h4 className="text-sm font-semibold mb-1 mt-2 text-foreground/85">{children}</h4>
+    return <h4 className="text-sm font-semibold mb-1 mt-2 text-foreground">{children}</h4>
   },
   hr() {
     return <hr className="my-3 border-muted-foreground/15" />
   },
   table({ children }) {
-    return <table className="min-w-full border-collapse my-2 border border-[#30363d] rounded-md overflow-hidden">{children}</table>
+    return <table className="min-w-full border-collapse my-2 border border-chat-border rounded-md overflow-hidden">{children}</table>
   },
   thead({ children }) {
-    return <thead className="bg-[#161b22]">{children}</thead>
+    return <thead className="bg-chat-table-header-bg">{children}</thead>
   },
   th({ children }) {
-    return <th className="px-3 py-1.5 text-left text-xs font-semibold text-[#c9d1d9] border-b border-[#30363d]">{children}</th>
+    return <th className="px-3 py-1.5 text-left text-xs font-semibold text-chat-text border-b border-chat-border">{children}</th>
   },
   td({ children }) {
-    return <td className="px-3 py-1 text-xs text-[#c9d1d9] border-b border-[#30363d]/50">{children}</td>
+    return <td className="px-3 py-1 text-xs text-chat-text border-b border-chat-border/50">{children}</td>
   },
 }
 

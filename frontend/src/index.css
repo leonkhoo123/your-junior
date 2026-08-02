@@ -31,6 +31,28 @@
   --color-chart-3: var(--chart-3);
   --color-chart-4: var(--chart-4);
   --color-chart-5: var(--chart-5);
+  --color-chat-bg: var(--chat-bg);
+  --color-chat-header-bg: var(--chat-header-bg);
+  --color-chat-border: var(--chat-border);
+  --color-chat-text: var(--chat-text);
+  --color-chat-muted: var(--chat-muted);
+  --color-chat-inline-code-bg: var(--chat-inline-code-bg);
+  --color-chat-inline-code-text: var(--chat-inline-code-text);
+  --color-chat-table-header-bg: var(--chat-table-header-bg);
+  --color-diff-add-bg: var(--diff-add-bg);
+  --color-diff-add-text: var(--diff-add-text);
+  --color-diff-add-line-bg: var(--diff-add-line-bg);
+  --color-diff-add-line-text: var(--diff-add-line-text);
+  --color-diff-remove-bg: var(--diff-remove-bg);
+  --color-diff-remove-text: var(--diff-remove-text);
+  --color-diff-remove-line-bg: var(--diff-remove-line-bg);
+  --color-diff-remove-line-text: var(--diff-remove-line-text);
+  --color-diff-header-bg: var(--diff-header-bg);
+  --color-diff-header-text: var(--diff-header-text);
+  --color-diff-line-num-bg: var(--diff-line-num-bg);
+  --color-diff-line-num-text: var(--diff-line-num-text);
+  --color-diff-add-marker: var(--diff-add-marker);
+  --color-diff-remove-marker: var(--diff-remove-marker);
 }
 
 :root {
@@ -46,7 +68,7 @@
   --secondary: oklch(0.97 0 0);
   --secondary-foreground: oklch(0.205 0 0);
   --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
+  --muted-foreground: oklch(0.42 0 0);
   --accent: oklch(0.97 0 0);
   --accent-foreground: oklch(0.205 0 0);
   --destructive: oklch(0.577 0.245 27.325);
@@ -58,6 +80,28 @@
   --chart-3: oklch(0.398 0.07 227.392);
   --chart-4: oklch(0.828 0.189 84.429);
   --chart-5: oklch(0.769 0.188 70.08);
+  --chat-bg: #ffffff;
+  --chat-header-bg: #e8ecf0;
+  --chat-border: #d0d7de;
+  --chat-text: #1f2328;
+  --chat-muted: #4d555e;
+  --chat-inline-code-bg: rgba(175, 184, 193, 0.4);
+  --chat-inline-code-text: #8250df;
+  --chat-table-header-bg: #f6f8fa;
+  --diff-add-bg: #dafbe1;
+  --diff-add-text: #1a7f37;
+  --diff-add-line-bg: #ccffd8;
+  --diff-add-line-text: #1a7f37;
+  --diff-remove-bg: #ffebe9;
+  --diff-remove-text: #cf222e;
+  --diff-remove-line-bg: #ffd8d5;
+  --diff-remove-line-text: #cf222e;
+  --diff-header-bg: #ddf4ff;
+  --diff-header-text: #0969da;
+  --diff-line-num-bg: #f6f8fa;
+  --diff-line-num-text: #57606a;
+  --diff-add-marker: #1a7f37;
+  --diff-remove-marker: #cf222e;
 }
 
 .dark {
@@ -84,6 +128,28 @@
   --chart-3: oklch(0.769 0.188 70.08);
   --chart-4: oklch(0.627 0.265 303.9);
   --chart-5: oklch(0.645 0.246 16.439);
+  --chat-bg: #0d1117;
+  --chat-header-bg: #161b22;
+  --chat-border: #30363d;
+  --chat-text: #c9d1d9;
+  --chat-muted: #8b949e;
+  --chat-inline-code-bg: #161b22;
+  --chat-inline-code-text: #d2a8ff;
+  --chat-table-header-bg: #161b22;
+  --diff-add-bg: #12261e;
+  --diff-add-text: #d2f3d2;
+  --diff-add-line-bg: #1a3a2e;
+  --diff-add-line-text: #7ee787;
+  --diff-remove-bg: #2d171b;
+  --diff-remove-text: #fdd2d7;
+  --diff-remove-line-bg: #3d1f26;
+  --diff-remove-line-text: #f7788b;
+  --diff-header-bg: #1b2a3a;
+  --diff-header-text: #79c0ff;
+  --diff-line-num-bg: #161b22;
+  --diff-line-num-text: #484f58;
+  --diff-add-marker: #3fb950;
+  --diff-remove-marker: #f85149;
 }
 
 @layer base {

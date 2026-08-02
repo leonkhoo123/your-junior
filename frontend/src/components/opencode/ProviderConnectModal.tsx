@@ -180,7 +180,7 @@ export function ProviderConnectModal({
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent
           onKeyDown={handleKeyDown}
-          className="sm:max-w-[520px] p-0 gap-0 border-border bg-[#0d1117]"
+          className="sm:max-w-[520px] p-0 gap-0 border-border bg-chat-bg"
         >
           <DialogHeader className="px-5 py-4 border-b border-primary/10">
             <DialogTitle className="text-base font-mono text-foreground">Connect a provider</DialogTitle>

@@ -1,6 +1,8 @@
 import { useCallback, useState } from "react"
 import { Light as SyntaxHighlighter } from "react-syntax-highlighter"
 import atomOneDark from "react-syntax-highlighter/dist/esm/styles/hljs/atom-one-dark"
+import github from "react-syntax-highlighter/dist/esm/styles/hljs/github"
+import { useIsDark } from "@/hooks/useIsDark"
 import goLang from "react-syntax-highlighter/dist/esm/languages/hljs/go"
 import pythonLang from "react-syntax-highlighter/dist/esm/languages/hljs/python"
 import typescriptLang from "react-syntax-highlighter/dist/esm/languages/hljs/typescript"
@@ -121,6 +123,7 @@ const LANG_ALIASES: Record<string, string> = {
 
 export function CodeBlock({ language, value }: CodeBlockProps) {
   const [copied, setCopied] = useState(false)
+  const isDark = useIsDark()
 
   const copyToClipboard = useCallback(() => {
     void navigator.clipboard.writeText(value)
@@ -135,11 +138,11 @@ export function CodeBlock({ language, value }: CodeBlockProps) {
 
   return (
     <div className="relative group my-2">
-      <div className="flex items-center justify-between px-3 py-1 bg-[#161b22] border border-[#30363d] border-b-0 rounded-t-md">
-        <span className="text-xs font-mono text-[#8b949e]">{displayLang}</span>
+      <div className="flex items-center justify-between px-3 py-1 bg-chat-header-bg border border-chat-border border-b-0 rounded-t-md">
+        <span className="text-xs font-mono text-chat-muted">{displayLang}</span>
         <button
           onClick={copyToClipboard}
-          className="flex items-center gap-1 text-xs text-[#8b949e] hover:text-[#c9d1d9] transition-colors"
+          className="flex items-center gap-1 text-xs text-chat-muted hover:text-chat-text transition-colors"
         >
           {copied ? <Check className="size-3" /> : <Copy className="size-3" />}
           <span>{copied ? "Copied" : "Copy"}</span>
@@ -147,14 +150,14 @@ export function CodeBlock({ language, value }: CodeBlockProps) {
       </div>
       <SyntaxHighlighter
         language={lang}
-        style={atomOneDark}
+        style={isDark ? atomOneDark : github}
         customStyle={{
           margin: 0,
           borderTopLeftRadius: 0,
           borderTopRightRadius: 0,
           borderBottomLeftRadius: "0.375rem",
           borderBottomRightRadius: "0.375rem",
-          border: "1px solid #30363d",
+          border: "1px solid var(--chat-border)",
           borderTop: "none",
           fontSize: "0.8125rem",
           lineHeight: "1.5",

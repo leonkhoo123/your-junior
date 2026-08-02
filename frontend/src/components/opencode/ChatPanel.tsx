@@ -116,11 +116,11 @@ export function ChatPanel({ sessionId, messages, onSendMessage, onSlashCommand, 
   }
 
   return (
-    <div className="flex flex-col flex-1 min-h-0 bg-[#0d1117]">
+    <div className="flex flex-col flex-1 min-h-0 bg-chat-bg">
       <div className="flex-1 overflow-y-auto px-4 py-3">
         {messages.length === 0 && (
           <div className="flex items-center justify-center h-full">
-            <p className="font-mono text-sm text-muted-foreground/40">
+            <p className="font-mono text-sm text-muted-foreground">
               {sessionId
                 ? 'Type a message and press Enter to begin. Try /new, /model, /thinking...'
                 : 'Type a message and press Enter to start.'}
@@ -133,7 +133,6 @@ export function ChatPanel({ sessionId, messages, onSendMessage, onSlashCommand, 
             role={msg.role}
             content={msg.content}
             reasoning={msg.reasoning}
-            streaming={msg.streaming}
             parts={msg.parts}
             error={msg.error}
             thinkingExpanded={thinkingExpanded}
@@ -143,7 +142,7 @@ export function ChatPanel({ sessionId, messages, onSendMessage, onSlashCommand, 
         <div ref={bottomRef} />
       </div>
 
-      <div className="shrink-0 border-t border-primary/10 px-4 py-3 relative">
+      <div className="shrink-0 border-t border-primary/10 px-4 py-2 relative">
         <SlashCommandMenu
           commands={matchedCommands}
           query={slashQuery}
@@ -151,31 +150,30 @@ export function ChatPanel({ sessionId, messages, onSendMessage, onSlashCommand, 
           visible={slashActive && onSlashCommand !== undefined && matchedCommands.length > 0}
           onSelect={handleSlashSelect}
         />
-        <div className="flex items-center gap-2">
-          <span className="font-mono text-sm text-primary/40 shrink-0">{">"}</span>
+        <div className="flex items-center bg-chat-header-bg border-l-[3px] border-foreground/30">
           <input
             ref={inputRef}
             type="text"
-            className="flex-1 bg-transparent font-mono text-sm text-foreground placeholder:text-muted-foreground/30 focus:outline-none"
-            placeholder={sessionId ? "ask opencode..." : "type a message to start..."}
+            className="flex-1 bg-transparent font-mono text-sm text-foreground focus:outline-none px-3 py-3.5 caret-primary [caret-shape:block]"
+            placeholder=""
             value={input}
             onChange={handleChange}
             onKeyDown={handleKeyDown}
           />
         </div>
         {currentAgent && (
-          <div className="mt-1.5 flex items-center gap-1.5">
-            <span className="font-mono text-[11px] text-muted-foreground/40">
+          <div className="mt-1.5 flex items-center gap-1.5 px-4 pb-3">
+            <span className="font-mono text-[11px] text-muted-foreground/80">
               {currentAgent.charAt(0).toUpperCase() + currentAgent.slice(1)}
               {currentModel && (
                 <>
-                  <span className="mx-1 text-muted-foreground/20">&middot;</span>
+                  <span className="mx-1 text-muted-foreground/40">&middot;</span>
                   {modelDisplayName ?? currentModel}
                 </>
               )}
               {currentVariant && (
                 <>
-                  <span className="mx-1 text-muted-foreground/20">&middot;</span>
+                  <span className="mx-1 text-muted-foreground/40">&middot;</span>
                   {currentVariant}
                 </>
               )}

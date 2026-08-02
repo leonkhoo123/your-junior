@@ -73,10 +73,10 @@ export function DiffBlock({ diffText, filename, showLineNumbers = true }: DiffBl
   const hasMeta = lines.some((l) => l.type === "meta")
 
   return (
-    <div className="my-2 border border-[#30363d] rounded-md overflow-hidden bg-[#0d1117]">
+    <div className="my-2 border border-chat-border rounded-md overflow-hidden bg-chat-bg">
       {filename && (
-        <div className="flex items-center px-3 py-1.5 bg-[#161b22] border-b border-[#30363d]">
-          <span className="text-xs font-mono text-[#8b949e]">{filename}</span>
+        <div className="flex items-center px-3 py-1.5 bg-chat-header-bg border-b border-chat-border">
+          <span className="text-xs font-mono text-chat-muted">{filename}</span>
         </div>
       )}
       <div className="overflow-x-auto">
@@ -85,15 +85,15 @@ export function DiffBlock({ diffText, filename, showLineNumbers = true }: DiffBl
             {hasMeta && (
               <>
                 {lines.filter((l) => l.type === "meta").map((line, i) => (
-                  <tr key={`meta-${String(i)}`} className="bg-[#0d1117]">
-                    <td className="text-[#8b949e] text-right pr-3 pl-3 select-none w-[1%] whitespace-nowrap align-top" />
-                    <td className="text-[#8b949e] text-right pr-3 pl-3 select-none w-[1%] whitespace-nowrap align-top" />
+                  <tr key={`meta-${String(i)}`} className="bg-chat-bg">
+                    <td className="text-chat-muted text-right pr-3 pl-3 select-none w-[1%] whitespace-nowrap align-top" />
+                    <td className="text-chat-muted text-right pr-3 pl-3 select-none w-[1%] whitespace-nowrap align-top" />
                     <td className="px-3 align-top" colSpan={showLineNumbers ? 1 : undefined}>
-                      <span className="text-[#8b949e] font-bold">{line.content}</span>
+                      <span className="text-chat-muted font-bold">{line.content}</span>
                     </td>
                   </tr>
                 ))}
-                <tr className="bg-[#0d1117]">
+                <tr className="bg-chat-bg">
                   <td className="h-2" colSpan={3} />
                 </tr>
               </>
@@ -103,11 +103,11 @@ export function DiffBlock({ diffText, filename, showLineNumbers = true }: DiffBl
                 key={`diff-${String(i)}`}
                 className={
                   line.type === "add"
-                    ? "bg-[#12261e]"
+                    ? "bg-diff-add-bg"
                     : line.type === "remove"
-                      ? "bg-[#2d171b]"
+                      ? "bg-diff-remove-bg"
                       : line.type === "header"
-                        ? "bg-[#1b2a3a]"
+                        ? "bg-diff-header-bg"
                         : ""
                 }
               >
@@ -117,10 +117,10 @@ export function DiffBlock({ diffText, filename, showLineNumbers = true }: DiffBl
                       className={
                         "text-right pr-3 pl-3 select-none w-[1%] whitespace-nowrap align-top " +
                         (line.type === "add"
-                          ? "bg-[#1a3a2e] text-[#7ee787]"
+                          ? "bg-diff-add-line-bg text-diff-add-line-text"
                           : line.type === "remove"
-                            ? "bg-[#3d1f26] text-[#f7788b]"
-                            : "text-[#484f58] bg-[#161b22]")
+                            ? "bg-diff-remove-line-bg text-diff-remove-line-text"
+                            : "text-diff-line-num-text bg-diff-line-num-bg")
                       }
                     >
                       {lineNumberPad(line.oldLineNumber)}
@@ -129,10 +129,10 @@ export function DiffBlock({ diffText, filename, showLineNumbers = true }: DiffBl
                       className={
                         "text-right pr-3 pl-3 select-none w-[1%] whitespace-nowrap align-top " +
                         (line.type === "add"
-                          ? "bg-[#1a3a2e] text-[#7ee787]"
+                          ? "bg-diff-add-line-bg text-diff-add-line-text"
                           : line.type === "remove"
-                            ? "bg-[#3d1f26] text-[#f7788b]"
-                            : "text-[#484f58] bg-[#161b22]")
+                            ? "bg-diff-remove-line-bg text-diff-remove-line-text"
+                            : "text-diff-line-num-text bg-diff-line-num-bg")
                       }
                     >
                       {lineNumberPad(line.newLineNumber)}
@@ -142,15 +142,15 @@ export function DiffBlock({ diffText, filename, showLineNumbers = true }: DiffBl
                 <td
                   className={
                     "px-3 align-top " +
-                    (line.type === "header" ? "text-[#79c0ff] font-bold" : "")
+                    (line.type === "header" ? "text-diff-header-text font-bold" : "")
                   }
                   colSpan={showLineNumbers ? 1 : 3}
                 >
                   {line.type === "add" && (
-                    <span className="text-[#3fb950] select-none mr-2 font-bold">+</span>
+                    <span className="text-diff-add-marker select-none mr-2 font-bold">+</span>
                   )}
                   {line.type === "remove" && (
-                    <span className="text-[#f85149] select-none mr-2 font-bold">-</span>
+                    <span className="text-diff-remove-marker select-none mr-2 font-bold">-</span>
                   )}
                   {line.type === "header" && (
                     <span className="select-none mr-2" />
@@ -161,10 +161,10 @@ export function DiffBlock({ diffText, filename, showLineNumbers = true }: DiffBl
                   <span
                     className={
                       line.type === "add"
-                        ? "text-[#d2f3d2]"
+                        ? "text-diff-add-text"
                         : line.type === "remove"
-                          ? "text-[#fdd2d7]"
-                          : "text-[#c9d1d9]"
+                          ? "text-diff-remove-text"
+                          : "text-chat-text"
                     }
                   >
                     {line.content}

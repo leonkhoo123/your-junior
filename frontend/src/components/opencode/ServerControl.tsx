@@ -18,7 +18,7 @@ export function ServerControl({
   onStop,
 }: ServerControlProps) {
   return (
-    <div className="flex items-center gap-3 px-4 py-2 border-b border-primary/10 bg-[#0d1117] shrink-0 font-mono text-xs">
+    <div className="flex items-center gap-3 px-4 py-2 border-b border-primary/10 bg-chat-bg shrink-0 font-mono text-xs">
       {serverState === "stopped" && (
         <Button
           size="sm"

@@ -78,7 +78,7 @@ export function SessionSelectorModal({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         onKeyDown={handleKeyDown}
-        className="sm:max-w-[520px] p-0 gap-0 border-border bg-[#0d1117]"
+        className="sm:max-w-[520px] p-0 gap-0 border-border bg-chat-bg"
       >
         <DialogHeader className="px-4 py-3 border-b border-primary/10">
           <DialogTitle className="font-mono text-sm text-foreground">
