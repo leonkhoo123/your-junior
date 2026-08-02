@@ -2,6 +2,10 @@
 
 ## Project Context
 
+**Your Junior** is a web platform that wraps the OpenCode AI coding assistant CLI into a browser-accessible, multi-user service. It consists of a **Go backend** (Gin framework) that manages the OpenCode process lifecycle, authentication (JWT+TOTP via `gonet-auth`), sessions, and SSE/WebSocket proxying, plus a **React TypeScript frontend** (Vite + Tailwind CSS + shadcn/ui) providing a chat interface with model selection, diff viewing, and provider management.
+
+When "UI" or "frontend" is mentioned, it refers to **this project's React frontend** (`frontend/`), not OpenCode's own terminal UI.
+
 The `gonet_auth` package (Go-based authentication library) is located at **`../gonet-auth`** relative to this project root. When working with authentication-related code, reference or import from that path.
 
 If anything about opencode is unclear, refer to its source code at **`/home/leon/Documents/others_git/opencode-dev`**.

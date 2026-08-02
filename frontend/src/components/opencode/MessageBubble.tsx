@@ -11,6 +11,7 @@ interface MessageBubbleProps {
   reasoning?: string
   streaming?: boolean
   parts?: ToolPartData[]
+  error?: string
   thinkingExpanded?: boolean
   onSelectSession?: (sessionID: string, title: string) => void
 }
@@ -28,6 +29,7 @@ export function MessageBubble({
   reasoning,
   streaming,
   parts,
+  error,
   thinkingExpanded,
   onSelectSession,
 }: MessageBubbleProps) {
@@ -100,6 +102,11 @@ export function MessageBubble({
               onSelectSession={onSelectSession}
             />
           ))}
+        </div>
+      )}
+      {error && (
+        <div className="mb-2 border-l-2 border-red-500/30 bg-red-500/5 py-1.5 pl-3 text-xs text-red-400/80 whitespace-pre-wrap break-words">
+          {error}
         </div>
       )}
       <div className="text-foreground/85">

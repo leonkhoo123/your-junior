@@ -22,11 +22,11 @@ export function TaskTool({ part, onSelectSession }: TaskToolProps) {
     const update = () => {
       const ms = Date.now() - startTime * 1000
       const secs = Math.floor(ms / 1000)
-      if (secs < 60) setElapsed(`${secs}s`)
+      if (secs < 60) setElapsed(`${String(secs)}s`)
       else {
         const mins = Math.floor(secs / 60)
         const s = secs % 60
-        setElapsed(`${mins}m ${s}s`)
+        setElapsed(`${String(mins)}m ${String(s)}s`)
       }
     }
     update()
@@ -100,5 +100,5 @@ function statusChar(status: ToolPartData["status"]): string {
 function formatToolCount(metadata?: Record<string, unknown>): string {
   const count = numVal(metadata?.toolCalls) ?? 0
   const label = count === 1 ? "toolcall" : "toolcalls"
-  return `${count} ${label}`
+  return `${String(count)} ${label}`
 }

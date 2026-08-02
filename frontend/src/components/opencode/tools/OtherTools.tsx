@@ -42,7 +42,7 @@ function ExecuteErrorOutput({ output }: { output: string }) {
   return (
     <div className="pl-3 text-xs text-red-400/60 whitespace-pre-wrap break-words">
       {limited.split("\n").map((line, i) => (
-        <div key={i}>{i === 0 ? "\u21b3 " : "  "}{line}</div>
+        <div key={`line-${String(i)}`}>{i === 0 ? "\u21b3 " : "  "}{line}</div>
       ))}
       {collapsed.overflow && (
         <span

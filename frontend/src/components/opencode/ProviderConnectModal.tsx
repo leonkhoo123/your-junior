@@ -123,6 +123,7 @@ export function ProviderConnectModal({
 
   const handleSelectProvider = (provider: ProviderEntry) => {
     if (!provider.connected) {
+      onOpenChange(false)
       setApiKeyProvider({ id: provider.id, name: provider.name })
     }
   }

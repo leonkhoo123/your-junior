@@ -1,7 +1,7 @@
 import type { ToolPartData } from "@/hooks/useChatMessages"
 import { InlineTool } from "./InlineTool"
 import { BlockTool } from "./BlockTool"
-import { strVal, inputArgs, filetype } from "./patterns"
+import { strVal, inputArgs, filetype, isDiffContent } from "./patterns"
 import { CodeBlock } from "../CodeBlock"
 import { DiffBlock } from "../DiffBlock"
 
@@ -133,13 +133,6 @@ function formatPath(filePath: string | undefined): string {
     return `.../${parts.slice(-2).join("/")}`
   }
   return filePath
-}
-
-export function isDiffContent(text: string): boolean {
-  if (!text) return false
-  const lines = text.split("\n")
-  if (lines.length < 3) return false
-  return lines.some((l) => /^@@ -\d+(?:,\d+)? \+\d+(?:,\d+)? @@/.test(l))
 }
 
 function cleanDiffMeta(raw: string | undefined): string | undefined {

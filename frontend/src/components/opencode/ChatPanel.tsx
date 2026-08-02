@@ -12,9 +12,13 @@ interface ChatPanelProps {
   onSlashCommand?: (command: string) => void
   thinkingExpanded?: boolean
   onSelectSession?: (sessionID: string, title: string) => void
+  currentAgent?: string
+  currentModel?: string
+  currentVariant?: string
+  modelDisplayName?: string
 }
 
-export function ChatPanel({ sessionId, messages, onSendMessage, onSlashCommand, thinkingExpanded, onSelectSession }: ChatPanelProps) {
+export function ChatPanel({ sessionId, messages, onSendMessage, onSlashCommand, thinkingExpanded, onSelectSession, currentAgent, currentModel, currentVariant, modelDisplayName }: ChatPanelProps) {
   const [input, setInput] = useState("")
   const [slashSelectedIndex, setSlashSelectedIndex] = useState(0)
   const bottomRef = useRef<HTMLDivElement>(null)
@@ -38,14 +42,12 @@ export function ChatPanel({ sessionId, messages, onSendMessage, onSlashCommand, 
   }, [messages])
 
   useEffect(() => {
-    if (sessionId) {
-      inputRef.current?.focus()
-    }
+    inputRef.current?.focus()
   }, [sessionId])
 
   const handleSend = () => {
     const text = input.trim()
-    if (!text || !sessionId) return
+    if (!text) return
     setInput("")
     resetSlash()
     onSendMessage(text)
@@ -63,8 +65,6 @@ export function ChatPanel({ sessionId, messages, onSendMessage, onSlashCommand, 
   )
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (!sessionId) return
-
     if (slashActive && onSlashCommand && matchedCommands.length > 0) {
       if (e.key === "ArrowDown") {
         e.preventDefault()
@@ -108,7 +108,6 @@ export function ChatPanel({ sessionId, messages, onSendMessage, onSlashCommand, 
   }
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!sessionId) return
     const val = e.target.value
     setInput(val)
     if (val.startsWith("/") && !val.includes(" ")) {
@@ -124,7 +123,7 @@ export function ChatPanel({ sessionId, messages, onSendMessage, onSlashCommand, 
             <p className="font-mono text-sm text-muted-foreground/40">
               {sessionId
                 ? 'Type a message and press Enter to begin. Try /new, /model, /thinking...'
-                : 'Start the OpenCode server to begin.'}
+                : 'Type a message and press Enter to start.'}
             </p>
           </div>
         )}
@@ -136,6 +135,7 @@ export function ChatPanel({ sessionId, messages, onSendMessage, onSlashCommand, 
             reasoning={msg.reasoning}
             streaming={msg.streaming}
             parts={msg.parts}
+            error={msg.error}
             thinkingExpanded={thinkingExpanded}
             onSelectSession={onSelectSession}
           />
@@ -157,13 +157,31 @@ export function ChatPanel({ sessionId, messages, onSendMessage, onSlashCommand, 
             ref={inputRef}
             type="text"
             className="flex-1 bg-transparent font-mono text-sm text-foreground placeholder:text-muted-foreground/30 focus:outline-none"
-            placeholder={sessionId ? "ask opencode..." : "start the server first..."}
+            placeholder={sessionId ? "ask opencode..." : "type a message to start..."}
             value={input}
             onChange={handleChange}
             onKeyDown={handleKeyDown}
-            disabled={!sessionId}
           />
         </div>
+        {currentAgent && (
+          <div className="mt-1.5 flex items-center gap-1.5">
+            <span className="font-mono text-[11px] text-muted-foreground/40">
+              {currentAgent.charAt(0).toUpperCase() + currentAgent.slice(1)}
+              {currentModel && (
+                <>
+                  <span className="mx-1 text-muted-foreground/20">&middot;</span>
+                  {modelDisplayName ?? currentModel}
+                </>
+              )}
+              {currentVariant && (
+                <>
+                  <span className="mx-1 text-muted-foreground/20">&middot;</span>
+                  {currentVariant}
+                </>
+              )}
+            </span>
+          </div>
+        )}
       </div>
     </div>
   )

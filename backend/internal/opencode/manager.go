@@ -19,6 +19,7 @@ type Manager struct {
 	mu     sync.Mutex
 	cmd    *exec.Cmd
 	cancel context.CancelFunc
+	done   chan struct{}
 }
 
 func NewManager(cfg *Config) *Manager {
@@ -66,23 +67,26 @@ func (m *Manager) Start() error {
 
 	logger.L.Info("opencode server spawned", "pid", m.cmd.Process.Pid)
 
-	go func() {
-		if err := m.cmd.Wait(); err != nil {
+	m.done = make(chan struct{})
+	done := m.done
+	go func(cmd *exec.Cmd) {
+		if err := cmd.Wait(); err != nil {
 			logger.L.Warn("opencode server exited", "error", err)
 		}
+		close(done)
 		m.mu.Lock()
 		m.cmd = nil
 		m.mu.Unlock()
-	}()
+	}(m.cmd)
 
 	return m.waitForReady(ctx)
 }
 
 func (m *Manager) Stop() error {
 	m.mu.Lock()
-	defer m.mu.Unlock()
 
 	if m.cmd == nil {
+		m.mu.Unlock()
 		return nil
 	}
 
@@ -93,14 +97,32 @@ func (m *Manager) Stop() error {
 		m.cancel = nil
 	}
 
-	if m.cmd.Process != nil {
-		if err := m.cmd.Process.Signal(os.Interrupt); err != nil {
-			logger.L.Warn("failed to interrupt opencode, sending kill", "pid", m.cmd.Process.Pid)
-			m.cmd.Process.Kill()
+	cmd := m.cmd
+	m.cmd = nil
+	done := m.done
+	m.done = nil
+	m.mu.Unlock()
+
+	if cmd.Process != nil {
+		if err := cmd.Process.Signal(os.Interrupt); err != nil {
+			logger.L.Warn("failed to interrupt opencode, sending kill", "pid", cmd.Process.Pid)
+			cmd.Process.Kill()
 		}
 	}
 
-	m.cmd = nil
+	if done != nil {
+		select {
+		case <-done:
+			logger.L.Info("opencode server exited cleanly")
+		case <-time.After(5 * time.Second):
+			logger.L.Warn("opencode server did not exit gracefully, forcing kill")
+			if cmd.Process != nil {
+				cmd.Process.Kill()
+			}
+			<-done
+		}
+	}
+
 	return nil
 }
 

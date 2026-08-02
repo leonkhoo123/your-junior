@@ -6,7 +6,6 @@ type ServerState = "stopped" | "starting" | "running" | "error"
 
 interface ServerControlProps {
   serverState: ServerState
-  serverModel: string
   wsStatus: WSStatus
   onStart: () => void
   onStop: () => void
@@ -14,7 +13,6 @@ interface ServerControlProps {
 
 export function ServerControl({
   serverState,
-  serverModel,
   wsStatus,
   onStart,
   onStop,
@@ -59,9 +57,6 @@ export function ServerControl({
 
       <div className="flex-1" />
 
-      {serverState === "running" && (
-        <span className="text-muted-foreground/50">{serverModel}</span>
-      )}
 
       {serverState === "starting" && (
         <span className="flex items-center gap-1 text-muted-foreground/50">

@@ -23,6 +23,7 @@ export interface DisplayMessage {
   reasoning: string
   streaming: boolean
   parts?: ToolPartData[]
+  error?: string
 }
 
 interface UseChatMessagesOptions {
@@ -32,6 +33,7 @@ interface UseChatMessagesOptions {
 
 export function useChatMessages({ on, sessionId }: UseChatMessagesOptions) {
   const [messages, setMessages] = useState<DisplayMessage[]>([])
+  const [loadingHistory, setLoadingHistory] = useState(false)
   const streamingIdRef = useRef<string | null>(null)
 
   const addUserMessage = useCallback((text: string) => {
@@ -55,10 +57,12 @@ export function useChatMessages({ on, sessionId }: UseChatMessagesOptions) {
   useEffect(() => {
     if (!sessionId) {
       clearMessages()
+      setLoadingHistory(false)
       return
     }
 
     clearMessages()
+    setLoadingHistory(true)
 
     let cancelled = false
 
@@ -119,6 +123,9 @@ export function useChatMessages({ on, sessionId }: UseChatMessagesOptions) {
       .catch((err: unknown) => {
         if (cancelled) return
         logger.warn("failed to load chat history", { sessionId, error: String(err) })
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingHistory(false)
       })
 
     return () => {
@@ -229,6 +236,41 @@ export function useChatMessages({ on, sessionId }: UseChatMessagesOptions) {
   }, [on, sessionId])
 
   useEffect(() => {
+    const unsub = on("error", (msg) => {
+      if (!sessionId) return
+      const msgSessionId = typeof msg.data?.session_id === "string" ? msg.data.session_id : ""
+      if (msgSessionId && msgSessionId !== sessionId) return
+
+      const message = typeof msg.data?.message === "string" ? msg.data.message : "Unknown error"
+
+      const mid = streamingIdRef.current
+      setMessages((prev) => {
+        if (mid) {
+          const idx = prev.findIndex((m) => m.id === mid)
+          if (idx !== -1) {
+            const updated = [...prev]
+            updated[idx] = { ...updated[idx], error: message, streaming: false }
+            return updated
+          }
+        }
+        return [
+          ...prev,
+          {
+            id: `error-${String(Date.now())}`,
+            role: "assistant",
+            content: "",
+            reasoning: "",
+            streaming: false,
+            error: message,
+          },
+        ]
+      })
+      streamingIdRef.current = null
+    })
+    return unsub
+  }, [on, sessionId])
+
+  useEffect(() => {
     const unsub = on("chat_complete", () => {
       logger.info("Received chat_complete")
       setMessages((prev) =>
@@ -241,5 +283,5 @@ export function useChatMessages({ on, sessionId }: UseChatMessagesOptions) {
     return unsub
   }, [on])
 
-  return { messages, addUserMessage, clearMessages }
+  return { messages, addUserMessage, clearMessages, loadingHistory }
 }

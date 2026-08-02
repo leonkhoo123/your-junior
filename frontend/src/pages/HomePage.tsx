@@ -1,12 +1,12 @@
 import { useState, useEffect, useCallback, useRef } from "react"
 import { useNavigate } from "react-router-dom"
-import { LogOut, Sun, Moon } from "lucide-react"
+import { LogOut, Sun, Moon, Loader2, RefreshCw, Wifi, WifiOff } from "lucide-react"
 import { toast } from "sonner"
 import DefaultLayout from "@/layouts/DefaultLayout"
 import { Button } from "@/components/ui/button"
 import { logout } from "@/api/api-auth"
 import { useOpencodeWebSocket } from "@/hooks/useOpencodeWebSocket"
-import { ServerControl } from "@/components/opencode/ServerControl"
+import type { WSStatus } from "@/api/wsClient"
 import { OpencodeChatPane } from "@/components/opencode/OpencodeChatPane"
 import { getConfig } from "@/config"
 import { logger } from "@/utils/logger"
@@ -35,6 +35,8 @@ interface StatusResponse {
   data?: {
     status: string
     model: string
+    agent?: string
+    variant?: string
   }
 }
 
@@ -70,9 +72,19 @@ function useLoggedState<T>(initial: T, label: string): [T, React.Dispatch<React.
 export default function HomePage() {
   const navigate = useNavigate()
   const { theme, setTheme } = useTheme()
+  const [serverName, setServerName] = useState("")
   const [isSystemDark, setIsSystemDark] = useState(
     () => window.matchMedia("(prefers-color-scheme: dark)").matches,
   )
+
+  useEffect(() => {
+    fetch("/api/health")
+      .then((res) => res.json())
+      .then((data: { status?: string; data?: { service_name?: string } }) => {
+        if (data.data?.service_name) setServerName(data.data.service_name)
+      })
+      .catch(() => undefined)
+  }, [])
 
   useEffect(() => {
     const mq = window.matchMedia("(prefers-color-scheme: dark)")
@@ -91,10 +103,25 @@ export default function HomePage() {
   const [serverModel, setServerModel] = useLoggedState("deepseek/deepseek-v4-pro", "serverModel")
   const [currentSessionId, setCurrentSessionId] = useLoggedState<string | null>(null, "currentSessionId")
   const [sessionTitle, setSessionTitle] = useLoggedState("Chat", "sessionTitle")
+  const [currentAgent, setCurrentAgent] = useLoggedState("build", "currentAgent")
   const [providers, setProviders] = useState<ProviderConfig[]>([])
   const [connectedProviderIDs, setConnectedProviderIDs] = useState<string[]>([])
   const [allProviders, setAllProviders] = useState<AllProviderInfo[]>([])
   const fetchProvidersLastRef = useRef(0)
+  const newChatRequestedRef = useRef(false)
+  const restartRequestedRef = useRef(false)
+  const prevWsStatusRef = useRef<WSStatus>("disconnected")
+
+  useEffect(() => {
+    const prev = prevWsStatusRef.current
+    prevWsStatusRef.current = wsStatus
+    if (wsStatus === "connected" && prev !== "connected") {
+      statusFetchLastRef.current = 0
+    }
+    if (wsStatus !== "connected") {
+      restartRequestedRef.current = false
+    }
+  }, [wsStatus])
 
   const fetchProviders = useCallback(() => {
     const now = Date.now()
@@ -132,37 +159,54 @@ export default function HomePage() {
       .then((res) => res.json())
       .then((json: unknown) => {
         const data = json as StatusResponse
-        logger.debug("opencode status response", { status: data.data?.status, model: data.data?.model })
+        logger.debug("opencode status response", { status: data.data?.status, model: data.data?.model, variant: data.data?.variant })
         if (data.data?.status === "running") {
           setServerState("running")
-          if (data.data.model) setServerModel(data.data.model)
+          if (data.data.model) {
+            const variant = data.data.variant
+            setServerModel(variant ? `${data.data.model}@${variant}` : data.data.model)
+          }
+          if (data.data.agent) setCurrentAgent(data.data.agent)
           fetchProviders()
+        } else if (data.data?.status === "stopped") {
+          setServerState("stopped")
         }
       })
       .catch((err: unknown) => {
         logger.warn("Failed to fetch opencode status", { error: String(err) })
       })
-  }, [wsStatus, setServerState, setServerModel, fetchProviders])
+  }, [wsStatus, setServerState, setServerModel, setCurrentAgent, fetchProviders])
 
   useEffect(() => {
     const unsub = on("server_status", (msg) => {
       const s = msg.data?.status as string | undefined
-      logger.info("Received server_status", { status: s, model: msg.data?.model })
+      logger.info("Received server_status", { status: s, model: msg.data?.model, variant: msg.data?.variant })
       if (s === "running") {
         setServerState("running")
-        if (msg.data?.model) setServerModel(msg.data.model as string)
+        const model = msg.data?.model as string | undefined
+        const variant = msg.data?.variant as string | undefined
+        if (model) setServerModel(variant ? `${model}@${variant}` : model)
+        if (msg.data?.agent) setCurrentAgent(msg.data.agent as string)
         fetchProviders()
       } else if (s === "stopped") {
         setServerState("stopped")
+        newChatRequestedRef.current = false
         setCurrentSessionId(null)
         setSessionTitle("Chat")
+        setCurrentAgent("build")
         setProviders([])
         setConnectedProviderIDs([])
         setAllProviders([])
+        if (restartRequestedRef.current) {
+          restartRequestedRef.current = false
+          logger.info("Restarting opencode server after stop")
+          setServerState("starting")
+          send({ type: "start_server" })
+        }
       }
     })
     return unsub
-  }, [on, setServerState, setServerModel, setCurrentSessionId, setSessionTitle, fetchProviders])
+  }, [on, send, setServerState, setServerModel, setCurrentSessionId, setSessionTitle, setCurrentAgent, fetchProviders])
 
   useEffect(() => {
     const unsub = on("model_changed", (msg) => {
@@ -182,7 +226,19 @@ export default function HomePage() {
   }, [on, setServerModel, setCurrentSessionId, setSessionTitle, fetchProviders])
 
   useEffect(() => {
-    if (serverState === "running" && !currentSessionId && wsStatus === "connected") {
+    const unsub = on("agent_changed", (msg) => {
+      const agent = msg.data?.agent as string | undefined
+      logger.info("Received agent_changed", { agent })
+      if (agent) {
+        setCurrentAgent(agent)
+        toast.success(`Agent changed to ${agent}`)
+      }
+    })
+    return unsub
+  }, [on, setCurrentAgent])
+
+  useEffect(() => {
+    if (serverState === "running" && !currentSessionId && wsStatus === "connected" && !newChatRequestedRef.current) {
       logger.info("Auto-creating first session")
       send({ type: "create_session" })
     }
@@ -193,6 +249,7 @@ export default function HomePage() {
       const sid = msg.data?.session_id as string | undefined
       logger.info("Received session_created", { session_id: sid })
       if (sid) {
+        newChatRequestedRef.current = false
         setCurrentSessionId(sid)
         setSessionTitle("Chat")
       }
@@ -220,14 +277,17 @@ export default function HomePage() {
     return unsub
   }, [on])
 
-  const handleStart = useCallback(() => {
-    logger.info("User requested start_server")
-    setServerState("starting")
-    send({ type: "start_server" })
-  }, [send, setServerState])
+  useEffect(() => {
+    if (wsStatus === "connected" && serverState === "stopped" && !restartRequestedRef.current) {
+      logger.info("Auto-starting opencode server")
+      setServerState("starting")
+      send({ type: "start_server" })
+    }
+  }, [wsStatus, serverState, send, setServerState])
 
-  const handleStop = useCallback(() => {
-    logger.info("User requested stop_server")
+  const handleRestart = useCallback(() => {
+    logger.info("User requested restart")
+    restartRequestedRef.current = true
     send({ type: "stop_server" })
   }, [send])
 
@@ -239,6 +299,13 @@ export default function HomePage() {
     },
     [setCurrentSessionId, setSessionTitle],
   )
+
+  const handleNewChat = useCallback(() => {
+    logger.info("User requested new chat (UI clear only)")
+    newChatRequestedRef.current = true
+    setCurrentSessionId(null)
+    setSessionTitle("Chat")
+  }, [setCurrentSessionId, setSessionTitle])
 
   const handleModelChange = useCallback(
     (providerID: string, modelID: string, variant?: string) => {
@@ -271,52 +338,64 @@ export default function HomePage() {
 
   return (
     <DefaultLayout>
-      <div className="absolute top-4 right-4 z-10 flex items-center gap-1">
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-8 w-8 text-muted-foreground hover:text-foreground"
-          onClick={() => {
-            if (theme === "system") {
-              setTheme(isSystemDark ? "light" : "dark")
-            } else {
-              setTheme(theme === "dark" ? "light" : "dark")
-            }
-          }}
-          title="Toggle theme"
-        >
-          {theme === "dark" || (theme === "system" && isSystemDark) ? (
-            <Moon className="h-[1.2rem] w-[1.2rem]" />
-          ) : (
-            <Sun className="h-[1.2rem] w-[1.2rem]" />
+      <header className="flex items-center justify-between px-4 py-2 border-b border-border bg-background/50 backdrop-blur-sm shrink-0">
+        <span className="text-sm font-medium text-muted-foreground truncate">
+          {serverName || "Your Junior"}
+        </span>
+        <div className="flex items-center gap-1.5">
+          <span className="flex items-center gap-1 font-mono text-[10px] text-muted-foreground/60">
+            {wsStatus === "connected" ? (
+              <Wifi className="size-3 text-green-500" />
+            ) : wsStatus === "connecting" ? (
+              <Wifi className="size-3 text-yellow-500" />
+            ) : (
+              <WifiOff className="size-3 text-muted-foreground/40" />
+            )}
+          </span>
+          {serverState === "starting" && (
+            <span className="flex items-center gap-1 font-mono text-[10px] text-muted-foreground/50">
+              <Loader2 className="size-3 animate-spin" />
+              starting...
+            </span>
           )}
-        </Button>
-        <Button variant="ghost" size="sm" onClick={handleLogout}>
-          <LogOut className="size-4" />
-          Logout
-        </Button>
-      </div>
-
-      <ServerControl
-        serverState={serverState}
-        serverModel={serverModel}
-        wsStatus={wsStatus}
-        onStart={handleStart}
-        onStop={handleStop}
-      />
+          {(serverState === "running" || serverState === "starting") && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 text-muted-foreground hover:text-foreground"
+              onClick={handleRestart}
+              title="Restart server"
+            >
+              <RefreshCw className="size-3.5" />
+            </Button>
+          )}
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 text-muted-foreground hover:text-foreground"
+            onClick={() => {
+              if (theme === "system") {
+                setTheme(isSystemDark ? "light" : "dark")
+              } else {
+                setTheme(theme === "dark" ? "light" : "dark")
+              }
+            }}
+            title="Toggle theme"
+          >
+            {theme === "dark" || (theme === "system" && isSystemDark) ? (
+              <Moon className="h-[1.2rem] w-[1.2rem]" />
+            ) : (
+              <Sun className="h-[1.2rem] w-[1.2rem]" />
+            )}
+          </Button>
+          <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground" onClick={handleLogout} title="Logout">
+            <LogOut className="size-4" />
+          </Button>
+        </div>
+      </header>
 
       <div className="flex-1 flex min-h-0">
-        {!currentSessionId && serverState === "running" ? (
-          <div className="flex-1 flex items-center justify-center">
-            <p className="font-mono text-sm text-muted-foreground/40">Creating session...</p>
-          </div>
-        ) : !currentSessionId ? (
-          <div className="flex-1 flex items-center justify-center">
-            <p className="font-mono text-sm text-muted-foreground/40">
-              Start the OpenCode server to begin.
-            </p>
-          </div>
-        ) : (
+        {serverState === "running" ? (
           <OpencodeChatPane
             sessionId={currentSessionId}
             sessionTitle={sessionTitle}
@@ -326,10 +405,18 @@ export default function HomePage() {
             allProviders={allProviders}
             connectedProviderIDs={connectedProviderIDs}
             currentModel={serverModel}
+            currentAgent={currentAgent}
             onModelChange={handleModelChange}
             onSetApiKey={handleSetApiKey}
             onSelectSession={handleSwitchSession}
+            onNewChat={handleNewChat}
           />
+        ) : (
+          <div className="flex-1 flex items-center justify-center">
+            <p className="font-mono text-sm text-muted-foreground/40">
+              Start the OpenCode server to begin.
+            </p>
+          </div>
         )}
       </div>
     </DefaultLayout>

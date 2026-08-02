@@ -123,16 +123,16 @@ export function inputArgs(input: Record<string, unknown>, exclude: string[] = []
     if (exclude.includes(key)) continue
     if (typeof value === "boolean" && value) parts.push(key)
     else if (typeof value === "string") parts.push(`${key}=${value}`)
-    else if (typeof value === "number") parts.push(`${key}=${value}`)
+    else if (typeof value === "number") parts.push(`${key}=${String(value)}`)
   }
   return parts.join(", ")
 }
 
 export function formatDuration(seconds: number): string {
-  if (seconds < 60) return `${seconds}s`
+  if (seconds < 60) return `${String(seconds)}s`
   const mins = Math.floor(seconds / 60)
   const secs = seconds % 60
-  return `${mins}m ${secs}s`
+  return `${String(mins)}m ${String(secs)}s`
 }
 
 const EXT_TO_LANG: Record<string, string> = {
@@ -162,4 +162,11 @@ export function filetype(filePath: string | undefined): string {
   if (dot === -1) return "plaintext"
   const ext = filePath.slice(dot).toLowerCase()
   return EXT_TO_LANG[ext] ?? "plaintext"
+}
+
+export function isDiffContent(text: string): boolean {
+  if (!text) return false
+  const lines = text.split("\n")
+  if (lines.length < 3) return false
+  return lines.some((l) => /^@@ -\d+(?:,\d+)? \+\d+(?:,\d+)? @@/.test(l))
 }

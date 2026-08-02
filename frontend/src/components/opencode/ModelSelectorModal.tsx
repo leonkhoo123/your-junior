@@ -175,6 +175,7 @@ export function ModelSelectorModal({
     const provider = allProviders.find((p) => p.id === providerID)
       ?? providers.find((p) => p.id === providerID)
     if (provider) {
+      onOpenChange(false)
       setApiKeyProvider({ id: providerID, name: provider.name })
     }
   }
@@ -259,12 +260,12 @@ export function ModelSelectorModal({
               onClick={() => {
                 handleVariantSelect(undefined)
               }}
-              className={cn(
-                "w-full flex items-center gap-3 px-3 py-2 text-left font-mono text-sm rounded-md mx-1 transition-colors",
-                "hover:bg-accent/60",
-                isCurrentVariant("default") && "bg-accent/40",
-                variantNav.selectedIndex === 0 && "bg-accent/40 ring-1 ring-inset ring-primary/50"
-              )}
+          className={cn(
+            "w-full flex items-center gap-3 px-3 py-2 text-left font-mono text-sm rounded-md mx-1 transition-colors focus:outline-none focus-visible:outline-none",
+            "hover:bg-accent/60",
+            isCurrentVariant("default") && "bg-accent/40",
+            variantNav.selectedIndex === 0 && "bg-accent/40 ring-1 ring-inset ring-primary/50"
+          )}
             >
               {isCurrentVariant("default") ? (
                 <Check className="size-3.5 text-primary shrink-0" />
@@ -285,7 +286,7 @@ export function ModelSelectorModal({
                     handleVariantSelect(variant)
                   }}
                   className={cn(
-                    "w-full flex items-center gap-3 px-3 py-2 text-left font-mono text-sm rounded-md mx-1 transition-colors",
+                    "w-full flex items-center gap-3 px-3 py-2 text-left font-mono text-sm rounded-md mx-1 transition-colors focus:outline-none focus-visible:outline-none",
                     "hover:bg-accent/60",
                     isCurrentVariant(variant) && "bg-accent/40",
                     variantNav.selectedIndex === i && "bg-accent/40 ring-1 ring-inset ring-primary/50"
@@ -348,7 +349,7 @@ export function ModelSelectorModal({
                             handleModelClick(provider.id, modelID, info)
                           }}
                           className={cn(
-                            "w-full flex items-center gap-3 px-3 py-2 text-left font-mono text-sm rounded-md mx-1 transition-colors",
+                            "w-full flex items-center gap-3 px-3 py-2 text-left font-mono text-sm rounded-md mx-1 transition-colors focus:outline-none focus-visible:outline-none",
                             "hover:bg-accent/60",
                             isCurrent && "bg-accent/40",
                             mainNav.selectedIndex === i && "bg-accent/40 ring-1 ring-inset ring-primary/50"
@@ -398,7 +399,7 @@ export function ModelSelectorModal({
                         handleConnectProvider(provider.id)
                       }}
                       className={cn(
-                        "w-full flex items-center gap-3 px-3 py-2 text-left font-mono text-sm rounded-md mx-1 transition-colors",
+                        "w-full flex items-center gap-3 px-3 py-2 text-left font-mono text-sm rounded-md mx-1 transition-colors focus:outline-none focus-visible:outline-none",
                         "hover:bg-accent/60 text-muted-foreground",
                         mainNav.selectedIndex === i && "bg-accent/40 ring-1 ring-inset ring-primary/50"
                       )}

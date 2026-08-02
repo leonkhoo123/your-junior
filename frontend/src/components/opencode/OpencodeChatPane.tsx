@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useChatMessages } from "@/hooks/useChatMessages"
 import { ChatPanel } from "@/components/opencode/ChatPanel"
 import {
@@ -43,9 +43,11 @@ interface OpencodeChatPaneProps {
   allProviders?: AllProviderInfo[]
   connectedProviderIDs?: string[]
   currentModel?: string
+  currentAgent?: string
   onModelChange?: (providerID: string, modelID: string, variant?: string) => void
   onSetApiKey?: (providerID: string, apiKey: string) => void
   onSelectSession?: (sessionID: string, title: string) => void
+  onNewChat?: () => void
 }
 
 export function OpencodeChatPane({
@@ -57,25 +59,35 @@ export function OpencodeChatPane({
   allProviders,
   connectedProviderIDs,
   currentModel,
+  currentAgent,
   onModelChange,
   onSetApiKey,
   onSelectSession,
+  onNewChat,
 }: OpencodeChatPaneProps) {
-  const { messages, addUserMessage } = useChatMessages({ on, sessionId })
+  const { messages, addUserMessage, loadingHistory } = useChatMessages({ on, sessionId })
   const [modelModalOpen, setModelModalOpen] = useState(false)
   const [sessionModalOpen, setSessionModalOpen] = useState(false)
   const [thinkingEnabled, setThinkingEnabled] = useState(false)
   const [variantTarget, setVariantTarget] = useState<VariantTarget | null>(null)
+  const [pendingMessage, setPendingMessage] = useState<string | null>(null)
+  const [creatingSession, setCreatingSession] = useState(false)
 
   const parsedModel = currentModel
     ? (() => {
         const atIndex = currentModel.lastIndexOf("@")
         let modelPart = currentModel
-        if (atIndex > 0) modelPart = currentModel.slice(0, atIndex)
+        let variant: string | undefined
+        if (atIndex > 0) {
+          modelPart = currentModel.slice(0, atIndex)
+          variant = currentModel.slice(atIndex + 1)
+        }
         const [providerID, ...rest] = modelPart.split("/")
-        return { providerID, modelID: rest.join("/") }
+        return { providerID, modelID: rest.join("/"), variant }
       })()
     : null
+
+  const currentVariant = parsedModel?.variant
 
   const findVariantTarget = (): VariantTarget | null => {
     if (!parsedModel || !providers) return null
@@ -91,7 +103,13 @@ export function OpencodeChatPane({
   }
 
   const handleSendMessage = (text: string) => {
-    if (!sessionId) return
+    if (!sessionId) {
+      if (creatingSession) return
+      setPendingMessage(text)
+      setCreatingSession(true)
+      send({ type: "create_session" })
+      return
+    }
     addUserMessage(text)
     send({
       type: "send_message",
@@ -107,7 +125,7 @@ export function OpencodeChatPane({
   const handleSlashCommand = (command: string) => {
     switch (command) {
       case "new":
-        send({ type: "create_session" })
+        onNewChat?.()
         break
       case "thinking":
         setThinkingEnabled((prev) => !prev)
@@ -124,6 +142,18 @@ export function OpencodeChatPane({
         break
     }
   }
+
+  useEffect(() => {
+    if (sessionId && pendingMessage && !loadingHistory) {
+      addUserMessage(pendingMessage)
+      send({
+        type: "send_message",
+        data: { session_id: sessionId, text: pendingMessage },
+      })
+      setPendingMessage(null)
+      setCreatingSession(false)
+    }
+  }, [sessionId, pendingMessage, loadingHistory, addUserMessage, send])
 
   const displayName = currentModel
     ? (() => {
@@ -150,28 +180,8 @@ export function OpencodeChatPane({
           {sessionTitle ?? "Chat"}
         </span>
         <div className="flex-1" />
-        {providers && providers.length > 0 && currentModel && onModelChange && (
-            <button
-              onClick={() => {
-                openModelModal(null)
-              }}
-              className="h-6 px-2 text-xs font-mono bg-transparent hover:bg-accent/50 rounded-md transition-colors flex items-center gap-1.5"
-            >
-              <span className="truncate max-w-[200px]">{displayName}</span>
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                className="size-3 opacity-50"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth={2}
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <path d="m6 9 6 6 6-6" />
-              </svg>
-            </button>
-        )}
+
+
         <ModelSelectorModal
           open={modelModalOpen}
           onOpenChange={setModelModalOpen}
@@ -196,6 +206,10 @@ export function OpencodeChatPane({
         onSlashCommand={handleSlashCommand}
         thinkingExpanded={thinkingEnabled}
         onSelectSession={onSelectSession}
+        currentAgent={currentAgent}
+        currentModel={currentModel}
+        currentVariant={currentVariant}
+        modelDisplayName={displayName}
       />
     </div>
   )

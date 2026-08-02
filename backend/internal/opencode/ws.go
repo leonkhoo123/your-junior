@@ -44,8 +44,9 @@ const (
 	WSTypeProvidersList  WSMessageType = "providers_list"
 	WSTypeModelChanged   WSMessageType = "model_changed"
 	WSTypeError          WSMessageType = "error"
-	WSTypePartUpdated     WSMessageType = "part_updated"
-	WSTypeSessionUpdated  WSMessageType = "session_updated"
+	WSTypePartUpdated    WSMessageType = "part_updated"
+	WSTypeSessionUpdated WSMessageType = "session_updated"
+	WSTypeAgentChanged   WSMessageType = "agent_changed"
 )
 
 type WSMessage struct {
@@ -202,7 +203,7 @@ func (c *WSClient) readPump() {
 
 		var msg WSMessage
 		if err := json.Unmarshal(message, &msg); err != nil {
-			l.Warn("failed to parse incoming websocket message", "error", err, "raw", string(message[:min(len(message), 200)]))
+			l.Warn("failed to parse incoming websocket message", "error", err, "raw", preview(string(message), 200))
 			c.hub.BroadcastTo(c, WSMessage{
 				Type: WSTypeError,
 				Data: map[string]any{"message": "invalid message format"},

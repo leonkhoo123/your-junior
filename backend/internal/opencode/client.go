@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"your-junior/internal/logger"
@@ -112,6 +113,12 @@ type ProviderConfig struct {
 	Models map[string]ModelInfo `json:"models"`
 }
 
+type AgentInfo struct {
+	ID          string `json:"id"`
+	Mode        string `json:"mode"`
+	Hidden      bool   `json:"hidden"`
+}
+
 type ConfigPayload struct {
 	Model string `json:"model,omitempty"`
 }
@@ -126,12 +133,35 @@ func NewClient(baseURL string) *Client {
 	}
 }
 
-func (c *Client) CreateSession() (*SessionResponse, error) {
+func (c *Client) CreateSession(model, variant string) (*SessionResponse, error) {
 	l := logger.L.With("component", "opencode_client", "method", "CreateSession")
 	url := c.baseURL + "/session"
-	l.Debug("sending request", "url", url)
 
-	resp, err := c.httpClient.Post(url, "application/json", nil)
+	var body io.Reader
+	if model != "" {
+		parts := strings.SplitN(model, "/", 2)
+		providerID := parts[0]
+		modelID := parts[0]
+		if len(parts) > 1 {
+			modelID = parts[1]
+		}
+		payload := map[string]any{
+			"model": map[string]any{
+				"providerID": providerID,
+				"id":         modelID,
+			},
+		}
+		if variant != "" && variant != "default" {
+			payload["model"].(map[string]any)["variant"] = variant
+		}
+		jsonBody, _ := json.Marshal(payload)
+		body = bytes.NewReader(jsonBody)
+		l.Debug("sending request", "url", url, "model", model, "variant", variant)
+	} else {
+		l.Debug("sending request", "url", url)
+	}
+
+	resp, err := c.httpClient.Post(url, "application/json", body)
 	if err != nil {
 		l.Error("request failed", "error", err)
 		return nil, fmt.Errorf("create session request failed: %w", err)
@@ -453,4 +483,32 @@ func (c *Client) ListSessions() ([]SessionResponse, error) {
 
 	l.Info("sessions listed", "count", len(sessions))
 	return sessions, nil
+}
+
+func (c *Client) ListAgents() ([]AgentInfo, error) {
+	l := logger.L.With("component", "opencode_client", "method", "ListAgents")
+	url := c.baseURL + "/agent"
+	l.Debug("sending request", "url", url)
+
+	resp, err := c.httpClient.Get(url)
+	if err != nil {
+		l.Error("request failed", "error", err)
+		return nil, fmt.Errorf("list agents request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		l.Error("non-OK response", "status", resp.StatusCode, "body", string(bodyBytes))
+		return nil, fmt.Errorf("list agents returned %d: %s", resp.StatusCode, string(bodyBytes))
+	}
+
+	var agents []AgentInfo
+	if err := json.NewDecoder(resp.Body).Decode(&agents); err != nil {
+		l.Error("failed to decode response", "error", err)
+		return nil, fmt.Errorf("failed to decode agents response: %w", err)
+	}
+
+	l.Info("agents listed", "count", len(agents))
+	return agents, nil
 }

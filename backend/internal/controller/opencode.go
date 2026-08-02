@@ -29,11 +29,13 @@ func SetupOpencodeRoutes(router *gin.Engine, cfg *config.CloudConfig, ocManager 
 }
 
 type opencodeRouteHandler struct {
-	manager   *opencode.Manager
-	hub       *opencode.Hub
-	client    *opencode.Client
-	sseProxy  *opencode.SSEProxy
-	session   string
+	manager  *opencode.Manager
+	hub      *opencode.Hub
+	client   *opencode.Client
+	sseProxy *opencode.SSEProxy
+	session  string
+	variant  string
+	agent    string
 }
 
 func (h *opencodeRouteHandler) status(c *gin.Context) {
@@ -45,8 +47,10 @@ func (h *opencodeRouteHandler) status(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"status": "success",
 		"data": gin.H{
-			"status": s,
-			"model":  h.manager.GetModel(),
+			"status":  s,
+			"model":   h.manager.GetModel(),
+			"agent":   h.agent,
+			"variant": h.variant,
 		},
 	})
 }
@@ -230,11 +234,28 @@ func (h *opencodeRouteHandler) handleCommand(client *opencode.WSClient, msg open
 				h.client = opencode.NewClient(h.manager.GetBaseURL())
 				l.Info("lazy-initialized opencode client")
 			}
+			if h.agent == "" {
+				agents, err := h.client.ListAgents()
+				if err != nil {
+					l.Warn("failed to list agents", "error", err)
+					h.agent = "build"
+				} else {
+					h.agent = "build"
+					for _, a := range agents {
+						if a.Mode == "primary" {
+							h.agent = a.ID
+							break
+						}
+					}
+				}
+			}
 			h.hub.Broadcast(opencode.WSMessage{
 				Type: opencode.WSTypeServerStatus,
 				Data: map[string]any{
-					"status": "running",
-					"model":  h.manager.GetModel(),
+					"status":  "running",
+					"model":   h.manager.GetModel(),
+					"agent":   h.agent,
+					"variant": h.variant,
 				},
 			})
 			return
@@ -252,6 +273,21 @@ func (h *opencodeRouteHandler) handleCommand(client *opencode.WSClient, msg open
 		h.client = opencode.NewClient(h.manager.GetBaseURL())
 		l.Info("server started", "base_url", h.manager.GetBaseURL(), "model", h.manager.GetModel())
 
+		if h.agent == "" {
+			if agents, err := h.client.ListAgents(); err == nil {
+				h.agent = "build"
+				for _, a := range agents {
+					if a.Mode == "primary" {
+						h.agent = a.ID
+						break
+					}
+				}
+			} else {
+				h.agent = "build"
+				l.Warn("failed to list agents", "error", err)
+			}
+		}
+
 		if h.sseProxy != nil {
 			h.sseProxy.Stop()
 		}
@@ -261,8 +297,10 @@ func (h *opencodeRouteHandler) handleCommand(client *opencode.WSClient, msg open
 		h.hub.Broadcast(opencode.WSMessage{
 			Type: opencode.WSTypeServerStatus,
 			Data: map[string]any{
-				"status": "running",
-				"model":  h.manager.GetModel(),
+				"status":  "running",
+				"model":   h.manager.GetModel(),
+				"agent":   h.agent,
+				"variant": h.variant,
 			},
 		})
 
@@ -276,6 +314,8 @@ func (h *opencodeRouteHandler) handleCommand(client *opencode.WSClient, msg open
 			l.Warn("error stopping opencode", "error", err)
 		}
 		h.session = ""
+		h.variant = ""
+		h.agent = ""
 		h.client = nil
 		l.Info("server stopped")
 		h.hub.Broadcast(opencode.WSMessage{
@@ -339,12 +379,7 @@ func (h *opencodeRouteHandler) handleCommand(client *opencode.WSClient, msg open
 			}
 		}
 
-		configModel := model
-		if variant != "" {
-			configModel = model + "@" + variant
-		}
-
-		if err := h.manager.WriteProjectConfig(configModel); err != nil {
+		if err := h.manager.WriteProjectConfig(model); err != nil {
 			l.Error("failed to write opencode.json", "error", err)
 			h.hub.BroadcastTo(client, opencode.WSMessage{
 				Type: opencode.WSTypeError,
@@ -357,7 +392,12 @@ func (h *opencodeRouteHandler) handleCommand(client *opencode.WSClient, msg open
 			l.Warn("failed to dispose instance after model change", "error", err)
 		}
 
-		h.manager.SetModel(configModel)
+		h.manager.SetModel(model)
+		if variant != "" {
+			h.variant = variant
+		} else {
+			h.variant = ""
+		}
 		h.session = ""
 
 		h.hub.Broadcast(opencode.WSMessage{
@@ -411,8 +451,10 @@ func (h *opencodeRouteHandler) handleCommand(client *opencode.WSClient, msg open
 		h.hub.Broadcast(opencode.WSMessage{
 			Type: opencode.WSTypeServerStatus,
 			Data: map[string]any{
-				"status": "running",
-				"model":  h.manager.GetModel(),
+				"status":  "running",
+				"model":   h.manager.GetModel(),
+				"agent":   h.agent,
+				"variant": h.variant,
 			},
 		})
 
@@ -433,7 +475,7 @@ func (h *opencodeRouteHandler) handleCommand(client *opencode.WSClient, msg open
 				return
 			}
 		}
-		session, err := h.client.CreateSession()
+		session, err := h.client.CreateSession(h.manager.GetModel(), h.variant)
 		if err != nil {
 			l.Error("failed to create session", "error", err)
 			h.hub.BroadcastTo(client, opencode.WSMessage{

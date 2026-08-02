@@ -41,6 +41,13 @@ func getMapKeys(m map[string]any) []string {
 	return keys
 }
 
+func preview(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen] + "..."
+}
+
 type SSEEvent struct {
 	Event   string          `json:"event"`
 	Data    json.RawMessage `json:"data"`
@@ -61,14 +68,14 @@ type SSEProxy struct {
 
 func NewSSEProxy(manager *Manager, hub *Hub) *SSEProxy {
 	return &SSEProxy{
-		manager:         manager,
-		hub:             hub,
-		cancel:          make(chan struct{}),
-		partAccText:     make(map[string]string),
+		manager:          manager,
+		hub:              hub,
+		cancel:           make(chan struct{}),
+		partAccText:      make(map[string]string),
 		partAccReasoning: make(map[string]string),
-		messageRoles:    make(map[string]string),
-		partTypes:       make(map[string]string),
-		partToMessage:   make(map[string]string),
+		messageRoles:     make(map[string]string),
+		partTypes:        make(map[string]string),
+		partToMessage:    make(map[string]string),
 	}
 }
 
@@ -302,7 +309,7 @@ func (p *SSEProxy) handleEvent(eventType, rawData, jsonType string) {
 			partType = p.partTypes[partID]
 		}
 
-		l.Debug("part.delta details", "partID", partID, "type", partType, "messageID", messageID, "sessionID", sessionID, "delta_preview", delta[:min(len(delta), 50)])
+		l.Debug("part.delta details", "partID", partID, "type", partType, "messageID", messageID, "sessionID", sessionID, "delta_preview", preview(delta, 50))
 
 		if delta == "" {
 			return
@@ -607,16 +614,56 @@ func (p *SSEProxy) handleEvent(eventType, rawData, jsonType string) {
 					p.hub.Broadcast(WSMessage{
 						Type: WSTypeServerStatus,
 						Data: map[string]any{
-							"event":     eventType,
-							"status":    statusType,
-							"raw":       rawData,
+							"event":  eventType,
+							"status": statusType,
+							"raw":    rawData,
 						},
 					})
 				}
 			}
 		}
 
+	case "session.error":
+		l.Debug("received SSE event", "data_len", len(rawData))
+		var data map[string]any
+		if err := json.Unmarshal([]byte(rawData), &data); err != nil {
+			l.Warn("failed to parse session.error", "error", err)
+			return
+		}
+		props, _ := data["properties"].(map[string]any)
+		sessionID := ""
+		message := ""
+		if props != nil {
+			sessionID, _ = props["sessionID"].(string)
+			if errObj, ok := props["error"].(map[string]any); ok {
+				name, _ := errObj["name"].(string)
+				if errData, ok := errObj["data"].(map[string]any); ok {
+					message, _ = errData["message"].(string)
+					if message == "" {
+						if cause, ok := errData["cause"].(string); ok {
+							message = cause
+						}
+					}
+				}
+				if message == "" && name != "" {
+					message = name
+				}
+			}
+		}
+		if message == "" {
+			message = rawData
+		}
+		l.Error("session error", "session_id", sessionID, "message", message)
+		p.hub.Broadcast(WSMessage{
+			Type: WSTypeError,
+			Data: map[string]any{
+				"event":      eventType,
+				"session_id": sessionID,
+				"message":    message,
+			},
+		})
+
 	default:
-		l.Debug("unhandled SSE event", "raw_preview", rawData[:min(len(rawData), 200)])
+		l.Debug("unhandled SSE event", "raw_preview", preview(rawData, 200))
 	}
 }
