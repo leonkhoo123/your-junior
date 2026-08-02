@@ -24,13 +24,16 @@ func SetupOpencodeRoutes(router *gin.Engine, cfg *config.CloudConfig, ocManager 
 
 	router.GET("/api/opencode/status", handler.status)
 	router.GET("/api/opencode/providers", handler.providers)
+	router.GET("/api/opencode/sessions", handler.sessions)
+	router.GET("/api/opencode/sessions/:id/messages", handler.messages)
 }
 
 type opencodeRouteHandler struct {
-	manager *opencode.Manager
-	hub     *opencode.Hub
-	client  *opencode.Client
-	session string
+	manager   *opencode.Manager
+	hub       *opencode.Hub
+	client    *opencode.Client
+	sseProxy  *opencode.SSEProxy
+	session   string
 }
 
 func (h *opencodeRouteHandler) status(c *gin.Context) {
@@ -49,22 +52,163 @@ func (h *opencodeRouteHandler) status(c *gin.Context) {
 }
 
 func (h *opencodeRouteHandler) providers(c *gin.Context) {
-	if !h.manager.IsRunning() || h.client == nil {
+	if !h.manager.IsRunning() {
 		c.JSON(http.StatusServiceUnavailable, gin.H{
 			"status":  "error",
 			"message": "opencode server not running",
 		})
 		return
 	}
+	if h.client == nil {
+		h.client = opencode.NewClient(h.manager.GetBaseURL())
+		logger.L.Info("lazy-initialized opencode client")
+	}
 
-	result, err := h.client.GetProvidersConfig()
+	providersResult, err := h.client.GetProvidersConfig()
 	if err != nil {
-		logger.L.Error("failed to get providers", "error", err)
+		logger.L.Error("failed to get providers config", "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"status":  "error",
 			"message": "failed to get providers: " + err.Error(),
 		})
 		return
+	}
+
+	connectedIDs := []string{}
+	allProviders := []opencode.ProviderListItem{}
+	providerList, err := h.client.GetProviderList()
+	if err != nil {
+		logger.L.Warn("failed to get provider list (connected status)", "error", err)
+	} else {
+		connectedIDs = providerList.Connected
+		allProviders = providerList.All
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"status": "success",
+		"data": gin.H{
+			"providers":     providersResult.Providers,
+			"default":       providersResult.Default,
+			"connected":     connectedIDs,
+			"all_providers": allProviders,
+		},
+	})
+}
+
+func (h *opencodeRouteHandler) sessions(c *gin.Context) {
+	if !h.manager.IsRunning() {
+		c.JSON(http.StatusServiceUnavailable, gin.H{
+			"status":  "error",
+			"message": "opencode server not running",
+		})
+		return
+	}
+	if h.client == nil {
+		h.client = opencode.NewClient(h.manager.GetBaseURL())
+		logger.L.Info("lazy-initialized opencode client")
+	}
+
+	sessions, err := h.client.ListSessions()
+	if err != nil {
+		logger.L.Error("failed to list sessions", "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"status":  "error",
+			"message": "failed to list sessions: " + err.Error(),
+		})
+		return
+	}
+
+	topLevel := make([]opencode.SessionResponse, 0, len(sessions))
+	for _, s := range sessions {
+		if s.ParentID == "" {
+			topLevel = append(topLevel, s)
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"status": "success",
+		"data":   topLevel,
+	})
+}
+
+func (h *opencodeRouteHandler) messages(c *gin.Context) {
+	sessionID := c.Param("id")
+	if sessionID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"status":  "error",
+			"message": "session id is required",
+		})
+		return
+	}
+
+	if !h.manager.IsRunning() {
+		c.JSON(http.StatusServiceUnavailable, gin.H{
+			"status":  "error",
+			"message": "opencode server not running",
+		})
+		return
+	}
+	if h.client == nil {
+		h.client = opencode.NewClient(h.manager.GetBaseURL())
+		logger.L.Info("lazy-initialized opencode client")
+	}
+
+	entries, err := h.client.ListMessages(sessionID)
+	if err != nil {
+		logger.L.Error("failed to list messages", "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"status":  "error",
+			"message": "failed to list messages: " + err.Error(),
+		})
+		return
+	}
+
+	type HistoryMessage struct {
+		ID        string                  `json:"id"`
+		Role      string                  `json:"role"`
+		Text      string                  `json:"text"`
+		Reasoning string                  `json:"reasoning"`
+		Parts     []opencode.MessagePart  `json:"parts,omitempty"`
+	}
+
+	result := make([]HistoryMessage, 0, len(entries))
+	for _, entry := range entries {
+		role := entry.Info.Role
+		var text, reasoning string
+		var toolParts []opencode.MessagePart
+
+		if entry.Info.Text != "" {
+			text = entry.Info.Text
+		}
+
+		for _, part := range entry.Parts {
+			switch part.Type {
+			case "text":
+				text += part.Text
+			case "reasoning":
+				reasoning += part.Text
+			case "tool":
+				toolParts = append(toolParts, part)
+			}
+		}
+
+		thinkingTags := opencode.ExtractThinkContent(text)
+		if thinkingTags != "" {
+			if reasoning == "" {
+				reasoning = thinkingTags
+			} else {
+				reasoning = thinkingTags + "\n" + reasoning
+			}
+		}
+		text = opencode.StripThinkingTags(text)
+
+		result = append(result, HistoryMessage{
+			ID:        entry.Info.ID,
+			Role:      role,
+			Text:      text,
+			Reasoning: reasoning,
+			Parts:     toolParts,
+		})
 	}
 
 	c.JSON(http.StatusOK, gin.H{
@@ -82,6 +226,10 @@ func (h *opencodeRouteHandler) handleCommand(client *opencode.WSClient, msg open
 		l.Info("handling command")
 		if h.manager.IsRunning() {
 			l.Info("server already running, broadcasting status")
+			if h.client == nil {
+				h.client = opencode.NewClient(h.manager.GetBaseURL())
+				l.Info("lazy-initialized opencode client")
+			}
 			h.hub.Broadcast(opencode.WSMessage{
 				Type: opencode.WSTypeServerStatus,
 				Data: map[string]any{
@@ -104,7 +252,11 @@ func (h *opencodeRouteHandler) handleCommand(client *opencode.WSClient, msg open
 		h.client = opencode.NewClient(h.manager.GetBaseURL())
 		l.Info("server started", "base_url", h.manager.GetBaseURL(), "model", h.manager.GetModel())
 
-		go opencode.NewSSEProxy(h.manager, h.hub).Start()
+		if h.sseProxy != nil {
+			h.sseProxy.Stop()
+		}
+		h.sseProxy = opencode.NewSSEProxy(h.manager, h.hub)
+		go h.sseProxy.Start()
 
 		h.hub.Broadcast(opencode.WSMessage{
 			Type: opencode.WSTypeServerStatus,
@@ -116,6 +268,10 @@ func (h *opencodeRouteHandler) handleCommand(client *opencode.WSClient, msg open
 
 	case opencode.WSTypeStopServer:
 		l.Info("handling command")
+		if h.sseProxy != nil {
+			h.sseProxy.Stop()
+			h.sseProxy = nil
+		}
 		if err := h.manager.Stop(); err != nil {
 			l.Warn("error stopping opencode", "error", err)
 		}
@@ -130,11 +286,16 @@ func (h *opencodeRouteHandler) handleCommand(client *opencode.WSClient, msg open
 	case opencode.WSTypeGetProviders:
 		l.Info("handling command")
 		if h.client == nil {
-			h.hub.BroadcastTo(client, opencode.WSMessage{
-				Type: opencode.WSTypeError,
-				Data: map[string]any{"message": "opencode server not running"},
-			})
-			return
+			if h.manager.IsRunning() {
+				h.client = opencode.NewClient(h.manager.GetBaseURL())
+				l.Info("lazy-initialized opencode client")
+			} else {
+				h.hub.BroadcastTo(client, opencode.WSMessage{
+					Type: opencode.WSTypeError,
+					Data: map[string]any{"message": "opencode server not running"},
+				})
+				return
+			}
 		}
 		result, err := h.client.GetProvidersConfig()
 		if err != nil {
@@ -166,11 +327,16 @@ func (h *opencodeRouteHandler) handleCommand(client *opencode.WSClient, msg open
 			return
 		}
 		if h.client == nil {
-			h.hub.BroadcastTo(client, opencode.WSMessage{
-				Type: opencode.WSTypeError,
-				Data: map[string]any{"message": "opencode server not running"},
-			})
-			return
+			if h.manager.IsRunning() {
+				h.client = opencode.NewClient(h.manager.GetBaseURL())
+				l.Info("lazy-initialized opencode client")
+			} else {
+				h.hub.BroadcastTo(client, opencode.WSMessage{
+					Type: opencode.WSTypeError,
+					Data: map[string]any{"message": "opencode server not running"},
+				})
+				return
+			}
 		}
 
 		configModel := model
@@ -178,8 +344,8 @@ func (h *opencodeRouteHandler) handleCommand(client *opencode.WSClient, msg open
 			configModel = model + "@" + variant
 		}
 
-		if err := h.client.SetConfig(opencode.ConfigPayload{Model: configModel}); err != nil {
-			l.Error("failed to set model config", "error", err)
+		if err := h.manager.WriteProjectConfig(configModel); err != nil {
+			l.Error("failed to write opencode.json", "error", err)
 			h.hub.BroadcastTo(client, opencode.WSMessage{
 				Type: opencode.WSTypeError,
 				Data: map[string]any{"message": "failed to set model: " + err.Error()},
@@ -215,11 +381,16 @@ func (h *opencodeRouteHandler) handleCommand(client *opencode.WSClient, msg open
 			return
 		}
 		if h.client == nil {
-			h.hub.BroadcastTo(client, opencode.WSMessage{
-				Type: opencode.WSTypeError,
-				Data: map[string]any{"message": "opencode server not running"},
-			})
-			return
+			if h.manager.IsRunning() {
+				h.client = opencode.NewClient(h.manager.GetBaseURL())
+				l.Info("lazy-initialized opencode client")
+			} else {
+				h.hub.BroadcastTo(client, opencode.WSMessage{
+					Type: opencode.WSTypeError,
+					Data: map[string]any{"message": "opencode server not running"},
+				})
+				return
+			}
 		}
 
 		if err := h.client.SetAuth(providerID, apiKey); err != nil {
@@ -250,12 +421,17 @@ func (h *opencodeRouteHandler) handleCommand(client *opencode.WSClient, msg open
 	case opencode.WSTypeCreateSession:
 		l.Info("handling command")
 		if h.client == nil {
-			l.Warn("client is nil, server not running")
-			h.hub.BroadcastTo(client, opencode.WSMessage{
-				Type: opencode.WSTypeError,
-				Data: map[string]any{"message": "opencode server not running"},
-			})
-			return
+			if h.manager.IsRunning() {
+				h.client = opencode.NewClient(h.manager.GetBaseURL())
+				l.Info("lazy-initialized opencode client")
+			} else {
+				l.Warn("client is nil, server not running")
+				h.hub.BroadcastTo(client, opencode.WSMessage{
+					Type: opencode.WSTypeError,
+					Data: map[string]any{"message": "opencode server not running"},
+				})
+				return
+			}
 		}
 		session, err := h.client.CreateSession("Chat")
 		if err != nil {
@@ -291,12 +467,17 @@ func (h *opencodeRouteHandler) handleCommand(client *opencode.WSClient, msg open
 			return
 		}
 		if h.client == nil {
-			l.Warn("client is nil, server not running")
-			h.hub.BroadcastTo(client, opencode.WSMessage{
-				Type: opencode.WSTypeError,
-				Data: map[string]any{"message": "opencode server not running"},
-			})
-			return
+			if h.manager.IsRunning() {
+				h.client = opencode.NewClient(h.manager.GetBaseURL())
+				l.Info("lazy-initialized opencode client")
+			} else {
+				l.Warn("client is nil, server not running")
+				h.hub.BroadcastTo(client, opencode.WSMessage{
+					Type: opencode.WSTypeError,
+					Data: map[string]any{"message": "opencode server not running"},
+				})
+				return
+			}
 		}
 		if err := h.client.SendPromptAsync(sessionID, text); err != nil {
 			l.Error("failed to send message", "error", err)

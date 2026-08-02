@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import { useNavigate } from "react-router-dom"
-import { LogOut, Sun, Moon, Plus } from "lucide-react"
+import { LogOut, Sun, Moon } from "lucide-react"
 import { toast } from "sonner"
 import DefaultLayout from "@/layouts/DefaultLayout"
 import { Button } from "@/components/ui/button"
@@ -38,11 +38,18 @@ interface StatusResponse {
   }
 }
 
+interface AllProviderInfo {
+  id: string
+  name: string
+}
+
 interface ProvidersResponse {
   status: string
   data?: {
     providers: ProviderConfig[]
     default?: Record<string, string>
+    connected?: string[]
+    all_providers?: AllProviderInfo[]
   }
 }
 
@@ -82,17 +89,29 @@ export default function HomePage() {
 
   const [serverState, setServerState] = useLoggedState<ServerState>("stopped", "serverState")
   const [serverModel, setServerModel] = useLoggedState("deepseek/deepseek-v4-pro", "serverModel")
-  const [sessionIds, setSessionIds] = useLoggedState<string[]>([], "sessionIds")
+  const [currentSessionId, setCurrentSessionId] = useLoggedState<string | null>(null, "currentSessionId")
+  const [sessionTitle, setSessionTitle] = useLoggedState("Chat", "sessionTitle")
   const [providers, setProviders] = useState<ProviderConfig[]>([])
+  const [connectedProviderIDs, setConnectedProviderIDs] = useState<string[]>([])
+  const [allProviders, setAllProviders] = useState<AllProviderInfo[]>([])
+  const fetchProvidersLastRef = useRef(0)
 
   const fetchProviders = useCallback(() => {
+    const now = Date.now()
+    if (now - fetchProvidersLastRef.current < 5000) {
+      logger.debug("fetchProviders throttled", { elapsed: now - fetchProvidersLastRef.current })
+      return
+    }
+    fetchProvidersLastRef.current = now
     fetch(`${getConfig().apiBaseUrl}/opencode/providers`, { credentials: "include" })
       .then((res) => res.json())
       .then((json: unknown) => {
         const data = json as ProvidersResponse
         if (data.status === "success" && data.data?.providers) {
           setProviders(data.data.providers)
-          logger.debug("providers loaded", { count: data.data.providers.length })
+          setConnectedProviderIDs(data.data.connected ?? [])
+          setAllProviders(data.data.all_providers ?? [])
+          logger.debug("providers loaded", { count: data.data.providers.length, connected: data.data.connected?.length, all: data.data.all_providers?.length })
         }
       })
       .catch((err: unknown) => {
@@ -100,8 +119,13 @@ export default function HomePage() {
       })
   }, [])
 
+  const statusFetchLastRef = useRef(0)
+
   useEffect(() => {
     if (wsStatus !== "connected") return
+    const now = Date.now()
+    if (now - statusFetchLastRef.current < 5000) return
+    statusFetchLastRef.current = now
 
     logger.debug("Fetching opencode status from REST API")
     fetch(`${getConfig().apiBaseUrl}/opencode/status`, { credentials: "include" })
@@ -130,12 +154,15 @@ export default function HomePage() {
         fetchProviders()
       } else if (s === "stopped") {
         setServerState("stopped")
-        setSessionIds([])
+        setCurrentSessionId(null)
+        setSessionTitle("Chat")
         setProviders([])
+        setConnectedProviderIDs([])
+        setAllProviders([])
       }
     })
     return unsub
-  }, [on, setServerState, setServerModel, setSessionIds, fetchProviders])
+  }, [on, setServerState, setServerModel, setCurrentSessionId, setSessionTitle, fetchProviders])
 
   useEffect(() => {
     const unsub = on("model_changed", (msg) => {
@@ -145,30 +172,33 @@ export default function HomePage() {
       if (model) {
         const fullModel = variant ? `${model}@${variant}` : model
         setServerModel(fullModel)
+        setCurrentSessionId(null)
+        setSessionTitle("Chat")
         toast.success(`Model changed to ${model}`)
         fetchProviders()
       }
     })
     return unsub
-  }, [on, setServerModel, fetchProviders])
+  }, [on, setServerModel, setCurrentSessionId, setSessionTitle, fetchProviders])
 
   useEffect(() => {
-    if (serverState === "running" && sessionIds.length === 0 && wsStatus === "connected") {
+    if (serverState === "running" && !currentSessionId && wsStatus === "connected") {
       logger.info("Auto-creating first session")
       send({ type: "create_session" })
     }
-  }, [serverState, sessionIds.length, wsStatus, send])
+  }, [serverState, currentSessionId, wsStatus, send])
 
   useEffect(() => {
     const unsub = on("session_created", (msg) => {
       const sid = msg.data?.session_id as string | undefined
       logger.info("Received session_created", { session_id: sid })
       if (sid) {
-        setSessionIds((prev) => [...prev, sid])
+        setCurrentSessionId(sid)
+        setSessionTitle("Chat")
       }
     })
     return unsub
-  }, [on, setSessionIds])
+  }, [on, setCurrentSessionId, setSessionTitle])
 
   useEffect(() => {
     const unsub = on("error", (msg) => {
@@ -190,25 +220,13 @@ export default function HomePage() {
     send({ type: "stop_server" })
   }, [send])
 
-  const handleNewChat = useCallback(() => {
-    logger.info("Creating new chat session")
-    send({ type: "create_session" })
-  }, [send])
-
-  const handleClosePane = useCallback(
-    (sid: string) => {
-      setSessionIds((prev) => prev.filter((id) => id !== sid))
+  const handleSwitchSession = useCallback(
+    (sessionID: string, title: string) => {
+      logger.info("Switching session", { sessionID, title })
+      setCurrentSessionId(sessionID)
+      setSessionTitle(title)
     },
-    [setSessionIds],
-  )
-
-  const handleNavigateToChild = useCallback(
-    (childSessionID: string) => {
-      if (!sessionIds.includes(childSessionID)) {
-        setSessionIds((prev) => [...prev, childSessionID])
-      }
-    },
-    [sessionIds, setSessionIds],
+    [setCurrentSessionId, setSessionTitle],
   )
 
   const handleModelChange = useCallback(
@@ -218,6 +236,17 @@ export default function HomePage() {
       send({
         type: "set_model",
         data: { model, variant },
+      })
+    },
+    [send],
+  )
+
+  const handleSetApiKey = useCallback(
+    (providerID: string, apiKey: string) => {
+      logger.info("Setting API key", { provider: providerID })
+      send({
+        type: "set_auth_key",
+        data: { provider_id: providerID, api_key: apiKey },
       })
     },
     [send],
@@ -266,64 +295,30 @@ export default function HomePage() {
       />
 
       <div className="flex-1 flex min-h-0">
-        {sessionIds.length === 0 && serverState === "running" ? (
+        {!currentSessionId && serverState === "running" ? (
           <div className="flex-1 flex items-center justify-center">
             <p className="font-mono text-sm text-muted-foreground/40">Creating session...</p>
           </div>
-        ) : sessionIds.length === 0 ? (
+        ) : !currentSessionId ? (
           <div className="flex-1 flex items-center justify-center">
             <p className="font-mono text-sm text-muted-foreground/40">
               Start the OpenCode server to begin.
             </p>
           </div>
-        ) : sessionIds.length === 1 ? (
+        ) : (
           <OpencodeChatPane
-            sessionId={sessionIds[0]}
+            sessionId={currentSessionId}
+            sessionTitle={sessionTitle}
             send={send}
             on={on}
-            label="Chat 1"
             providers={providers}
+            allProviders={allProviders}
+            connectedProviderIDs={connectedProviderIDs}
             currentModel={serverModel}
             onModelChange={handleModelChange}
-            onNavigateToChild={handleNavigateToChild}
+            onSetApiKey={handleSetApiKey}
+            onSelectSession={handleSwitchSession}
           />
-        ) : (
-          <div className="flex-1 flex flex-col gap-2 p-2 overflow-hidden">
-            <div className="flex items-center gap-2 px-1 shrink-0">
-              <span className="font-mono text-xs text-muted-foreground/50">
-                {sessionIds.length} chats
-              </span>
-              <div className="flex-1" />
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={handleNewChat}
-                className="h-6 px-2 text-xs font-mono text-muted-foreground/50 hover:text-foreground"
-              >
-                <Plus className="size-3" />
-                New Chat
-              </Button>
-            </div>
-            <div className="flex-1 flex gap-2 overflow-x-auto min-h-0">
-              {sessionIds.map((sid, i) => (
-                <div key={sid} className="flex-1 min-w-0">
-                  <OpencodeChatPane
-                    sessionId={sid}
-                    send={send}
-                    on={on}
-                    label={`Chat ${String(i + 1)}`}
-                    onClose={sessionIds.length > 1 ? () => {
-                      handleClosePane(sid)
-                    } : undefined}
-                    providers={providers}
-                    currentModel={serverModel}
-                    onModelChange={handleModelChange}
-                    onNavigateToChild={handleNavigateToChild}
-                  />
-                </div>
-              ))}
-            </div>
-          </div>
         )}
       </div>
     </DefaultLayout>

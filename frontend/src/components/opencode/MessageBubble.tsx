@@ -1,7 +1,9 @@
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { ChevronDown, ChevronRight } from "lucide-react"
 import type { ToolPartData } from "@/hooks/useChatMessages"
-import { SubagentTool } from "@/components/opencode/SubagentTool"
+import { ToolPart } from "@/components/opencode/tools"
+import { MarkdownRenderer } from "@/components/opencode/MarkdownRenderer"
+import { DiffBlock } from "@/components/opencode/DiffBlock"
 
 interface MessageBubbleProps {
   role: "user" | "assistant" | "tool"
@@ -9,7 +11,15 @@ interface MessageBubbleProps {
   reasoning?: string
   streaming?: boolean
   parts?: ToolPartData[]
-  onNavigateToChild?: (childSessionID: string) => void
+  thinkingExpanded?: boolean
+  onSelectSession?: (sessionID: string, title: string) => void
+}
+
+function isDiffContent(text: string): boolean {
+  if (!text) return false
+  const lines = text.split("\n")
+  if (lines.length < 3) return false
+  return lines.some((l) => /^@@ -\d+(?:,\d+)? \+\d+(?:,\d+)? @@/.test(l))
 }
 
 export function MessageBubble({
@@ -18,9 +28,16 @@ export function MessageBubble({
   reasoning,
   streaming,
   parts,
-  onNavigateToChild,
+  thinkingExpanded,
+  onSelectSession,
 }: MessageBubbleProps) {
-  const [reasoningOpen, setReasoningOpen] = useState(false)
+  const [reasoningOpen, setReasoningOpen] = useState(thinkingExpanded ?? false)
+
+  useEffect(() => {
+    if (thinkingExpanded !== undefined) {
+      setReasoningOpen(thinkingExpanded)
+    }
+  }, [thinkingExpanded])
 
   if (role === "user") {
     return (
@@ -36,6 +53,13 @@ export function MessageBubble({
   }
 
   if (role === "tool") {
+    if (isDiffContent(content)) {
+      return (
+        <div className="py-1">
+          <DiffBlock diffText={content} />
+        </div>
+      )
+    }
     return (
       <div className="py-1">
         <div className="bg-muted/30 border-l-2 border-amber-500/30 pl-3 py-1.5 font-mono text-xs whitespace-pre-wrap break-words text-muted-foreground">
@@ -69,51 +93,21 @@ export function MessageBubble({
       )}
       {parts && parts.length > 0 && (
         <div className="mb-2 space-y-1">
-          {parts.map((part) =>
-            part.tool === "task" ? (
-              <SubagentTool
-                key={part.id}
-                part={part}
-                onNavigateToChild={onNavigateToChild}
-              />
-            ) : (
-              <div
-                key={part.id}
-                className="flex items-center gap-2 text-xs px-2 py-0.5 rounded border border-muted-foreground/10 bg-muted/20 text-muted-foreground/60"
-              >
-                <ToolStatusIcon status={part.status} />
-                <span className="font-medium">{part.tool}</span>
-                {part.title && (
-                  <span className="text-muted-foreground/40 truncate max-w-[300px]">
-                    {part.title}
-                  </span>
-                )}
-              </div>
-            ),
-          )}
+          {parts.map((part) => (
+            <ToolPart
+              key={part.id}
+              part={part}
+              onSelectSession={onSelectSession}
+            />
+          ))}
         </div>
       )}
-      <div className="whitespace-pre-wrap break-words text-foreground/85">
-        {content || (streaming ? "" : "")}
+      <div className="text-foreground/85">
+        <MarkdownRenderer content={content} />
       </div>
       {streaming && (
         <span className="inline-block w-2 h-[1.1em] bg-primary/60 ml-0.5 animate-pulse align-middle" />
       )}
     </div>
   )
-}
-
-function ToolStatusIcon({ status }: { status: ToolPartData["status"] }) {
-  switch (status) {
-    case "pending":
-      return <span className="text-muted-foreground/40">○</span>
-    case "running":
-      return <span className="text-amber-400 animate-pulse">◌</span>
-    case "completed":
-      return <span className="text-green-500">✓</span>
-    case "error":
-      return <span className="text-red-400">✗</span>
-    default:
-      return null
-  }
 }

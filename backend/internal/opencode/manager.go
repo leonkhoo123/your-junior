@@ -2,10 +2,12 @@ package opencode
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -131,6 +133,40 @@ func (m *Manager) GetModel() string {
 func (m *Manager) SetModel(model string) {
 	m.cfg.Model = model
 	logger.L.Info("model updated", "model", model)
+}
+
+func (m *Manager) WriteProjectConfig(model string) error {
+	l := logger.L.With("component", "opencode_manager", "method", "WriteProjectConfig")
+	configPath := filepath.Join(m.cfg.WorkDir, "opencode.json")
+
+	data, err := os.ReadFile(configPath)
+	if err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("failed to read existing opencode.json: %w", err)
+	}
+
+	var cfg map[string]any
+	if len(data) > 0 {
+		if err := json.Unmarshal(data, &cfg); err != nil {
+			l.Warn("failed to parse existing opencode.json, overwriting", "error", err)
+			cfg = make(map[string]any)
+		}
+	} else {
+		cfg = make(map[string]any)
+	}
+
+	cfg["model"] = model
+
+	jsonData, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal opencode.json: %w", err)
+	}
+
+	if err := os.WriteFile(configPath, jsonData, 0644); err != nil {
+		return fmt.Errorf("failed to write opencode.json: %w", err)
+	}
+
+	l.Info("wrote opencode.json", "path", configPath, "model", model)
+	return nil
 }
 
 func (m *Manager) waitForReady(ctx context.Context) error {

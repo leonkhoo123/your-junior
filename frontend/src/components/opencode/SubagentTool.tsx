@@ -3,10 +3,10 @@ import type { ToolPartData } from "@/hooks/useChatMessages"
 
 interface SubagentToolProps {
   part: ToolPartData
-  onNavigateToChild?: (childSessionID: string) => void
+  onSelectSession?: (sessionID: string, title: string) => void
 }
 
-export function SubagentTool({ part, onNavigateToChild }: SubagentToolProps) {
+export function SubagentTool({ part, onSelectSession }: SubagentToolProps) {
   const [elapsed, setElapsed] = useState("")
 
   const agentType = typeof part.input?.subagent_type === "string"
@@ -39,15 +39,15 @@ export function SubagentTool({ part, onNavigateToChild }: SubagentToolProps) {
     return () => { clearInterval(interval) }
   }, [part.status, part.time])
 
+  const titleText = `${capitalize(agentType)}${background ? " (background)" : ""} — ${description}`
+
   const handleClick = () => {
-    if (childSessionID && onNavigateToChild) {
-      onNavigateToChild(childSessionID)
+    if (childSessionID && onSelectSession) {
+      onSelectSession(childSessionID, titleText)
     }
   }
 
-  const isClickable = childSessionID && onNavigateToChild
-
-  const titleText = `${capitalize(agentType)}${background ? " (background)" : ""} — ${description}`
+  const isClickable = childSessionID && onSelectSession
 
   return (
     <div

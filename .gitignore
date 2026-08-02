@@ -12,6 +12,10 @@ server
 db/
 backend/db/
 
+# Test data
+/backend/project
+/backend/project/*
+
 # Frontend
 frontend/node_modules/
 frontend/dist/

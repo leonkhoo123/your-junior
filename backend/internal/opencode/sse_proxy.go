@@ -7,14 +7,30 @@ import (
 	"net/http"
 	"regexp"
 	"strings"
+	"sync"
+	"time"
 
 	"your-junior/internal/logger"
 )
 
 var thinkingTagRe = regexp.MustCompile(`(?s)<think>.*?</think>\s*`)
 
-func stripThinkingTags(s string) string {
+func StripThinkingTags(s string) string {
 	return thinkingTagRe.ReplaceAllString(s, "")
+}
+
+func ExtractThinkContent(s string) string {
+	matches := thinkingTagRe.FindAllString(s, -1)
+	var result string
+	for _, match := range matches {
+		inner := strings.TrimPrefix(match, "<think>")
+		inner = strings.TrimSuffix(inner, "</think>")
+		inner = strings.TrimSpace(inner)
+		if inner != "" {
+			result += inner + "\n"
+		}
+	}
+	return strings.TrimSpace(result)
 }
 
 func getMapKeys(m map[string]any) []string {
@@ -32,14 +48,15 @@ type SSEEvent struct {
 }
 
 type SSEProxy struct {
-	manager         *Manager
-	hub             *Hub
-	cancel          chan struct{}
-	partAccText     map[string]string
+	manager          *Manager
+	hub              *Hub
+	cancel           chan struct{}
+	stopOnce         sync.Once
+	partAccText      map[string]string
 	partAccReasoning map[string]string // partID -> accumulated reasoning text
-	messageRoles    map[string]string // messageID -> role
-	partTypes       map[string]string // partID -> type (text, reasoning, etc.)
-	partToMessage   map[string]string // partID -> messageID
+	messageRoles     map[string]string // messageID -> role
+	partTypes        map[string]string // partID -> type (text, reasoning, etc.)
+	partToMessage    map[string]string // partID -> messageID
 }
 
 func NewSSEProxy(manager *Manager, hub *Hub) *SSEProxy {
@@ -67,22 +84,29 @@ func (p *SSEProxy) Start() {
 				l.Debug("SSE proxy stopped")
 				return
 			default:
-				if err := p.connect(url); err != nil {
-					l.Warn("SSE connection failed, retrying", "error", err)
-				}
-				select {
-				case <-p.cancel:
-					l.Debug("SSE proxy stopped after reconnect")
-					return
-				default:
-				}
 			}
+
+			err := p.connect(url)
+			if err != nil {
+				l.Warn("SSE connection failed, retrying in 2s", "error", err)
+				select {
+				case <-time.After(2 * time.Second):
+				case <-p.cancel:
+					l.Debug("SSE proxy stopped during backoff")
+					return
+				}
+				continue
+			}
+
+			l.Info("SSE stream ended, reconnecting")
 		}
 	}()
 }
 
 func (p *SSEProxy) Stop() {
-	close(p.cancel)
+	p.stopOnce.Do(func() {
+		close(p.cancel)
+	})
 }
 
 func (p *SSEProxy) clearPartAcc() {
@@ -318,7 +342,7 @@ func (p *SSEProxy) handleEvent(eventType, rawData, jsonType string) {
 			Data: map[string]any{
 				"session_id": sessionID,
 				"event":      eventType,
-				"text":       stripThinkingTags(p.partAccText[partID]),
+				"text":       StripThinkingTags(p.partAccText[partID]),
 				"reasoning":  reasoningContent,
 				"streaming":  true,
 			},
@@ -407,7 +431,7 @@ func (p *SSEProxy) handleEvent(eventType, rawData, jsonType string) {
 				Data: map[string]any{
 					"session_id": sessionID,
 					"event":      eventType,
-					"text":       stripThinkingTags(content),
+					"text":       StripThinkingTags(content),
 					"reasoning":  reasoningContent,
 					"streaming":  true,
 				},
@@ -513,7 +537,7 @@ func (p *SSEProxy) handleEvent(eventType, rawData, jsonType string) {
 				Data: map[string]any{
 					"session_id": sessionID,
 					"event":      eventType,
-					"text":       stripThinkingTags(content),
+					"text":       StripThinkingTags(content),
 					"reasoning":  reasoningContent,
 					"streaming":  true,
 				},
@@ -536,15 +560,6 @@ func (p *SSEProxy) handleEvent(eventType, rawData, jsonType string) {
 
 	case "session.updated":
 		l.Debug("received SSE event", "data_len", len(rawData))
-		var data map[string]any
-		if err := json.Unmarshal([]byte(rawData), &data); err == nil {
-			p.hub.Broadcast(WSMessage{
-				Type: WSTypeServerStatus,
-				Data: data,
-			})
-		} else {
-			l.Debug("failed to parse session.updated data", "error", err)
-		}
 
 	case "session.idle":
 		l.Debug("received SSE event", "data_len", len(rawData))

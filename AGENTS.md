@@ -4,6 +4,8 @@
 
 The `gonet_auth` package (Go-based authentication library) is located at **`../gonet-auth`** relative to this project root. When working with authentication-related code, reference or import from that path.
 
+If anything about opencode is unclear, refer to its source code at **`/home/leon/Documents/others_git/opencode-dev`**.
+
 ## Code Quality Rules
 
 ### File Length Limit (Apply to Both Go and React TypeScript)

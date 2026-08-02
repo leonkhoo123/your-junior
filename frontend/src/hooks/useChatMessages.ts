@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from "react"
 import { logger } from "@/utils/logger"
+import { getConfig } from "@/config"
 import type { MessageHandler } from "@/hooks/useOpencodeWebSocket"
 
 export interface ToolPartData {
@@ -52,6 +53,80 @@ export function useChatMessages({ on, sessionId }: UseChatMessagesOptions) {
   }, [])
 
   useEffect(() => {
+    if (!sessionId) {
+      clearMessages()
+      return
+    }
+
+    clearMessages()
+
+    let cancelled = false
+
+    fetch(`${getConfig().apiBaseUrl}/opencode/sessions/${sessionId}/messages`, {
+      credentials: "include",
+    })
+      .then((res) => res.json())
+      .then((json: unknown) => {
+        if (cancelled) return
+        const data = json as {
+          status: string
+          data?: {
+            id: string
+            role: string
+            text: string
+            reasoning: string
+            parts?: {
+              id: string
+              type: string
+              tool?: string
+              callID?: string
+              state?: {
+                status?: string
+                title?: string
+                input?: Record<string, unknown>
+                output?: string
+                error?: string
+                metadata?: Record<string, unknown>
+                time?: { start: number; end?: number }
+              }
+            }[]
+          }[]
+        }
+        if (data.status === "success" && data.data && data.data.length > 0) {
+          const history: DisplayMessage[] = data.data.map((msg) => ({
+            id: msg.id,
+            role: msg.role as DisplayMessage["role"],
+            content: msg.text,
+            reasoning: msg.reasoning,
+            streaming: false,
+            parts: msg.parts?.map((p): ToolPartData => ({
+              id: p.id,
+              tool: p.tool ?? p.type,
+              callID: p.callID ?? "",
+              status: (p.state?.status ?? "completed") as ToolPartData["status"],
+              title: p.state?.title,
+              input: p.state?.input,
+              output: p.state?.output,
+              error: p.state?.error,
+              metadata: p.state?.metadata,
+              time: p.state?.time,
+            })),
+          }))
+          setMessages(history)
+          logger.debug("loaded chat history", { count: history.length, sessionId })
+        }
+      })
+      .catch((err: unknown) => {
+        if (cancelled) return
+        logger.warn("failed to load chat history", { sessionId, error: String(err) })
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [sessionId, clearMessages])
+
+  useEffect(() => {
     const unsub = on("chat_message", (msg) => {
       if (!sessionId) return
       const msgSessionId = typeof msg.data?.session_id === "string" ? msg.data.session_id : ""
@@ -64,9 +139,9 @@ export function useChatMessages({ on, sessionId }: UseChatMessagesOptions) {
 
       streamingIdRef.current ??= `msg-${String(Date.now())}`
 
+      const sid = streamingIdRef.current
       setMessages((prev) => {
-        const idx = prev.findIndex((m) => m.id === streamingIdRef.current)
-        const sid = streamingIdRef.current
+        const idx = prev.findIndex((m) => m.id === sid)
         if (idx !== -1) {
           const updated = [...prev]
           updated[idx] = {
@@ -165,12 +240,6 @@ export function useChatMessages({ on, sessionId }: UseChatMessagesOptions) {
     })
     return unsub
   }, [on])
-
-  useEffect(() => {
-    if (!sessionId) {
-      clearMessages()
-    }
-  }, [sessionId, clearMessages])
 
   return { messages, addUserMessage, clearMessages }
 }

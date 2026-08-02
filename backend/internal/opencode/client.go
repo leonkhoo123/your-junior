@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"time"
 
 	"your-junior/internal/logger"
 )
@@ -19,6 +20,7 @@ type SessionResponse struct {
 	ID        string `json:"id"`
 	Title     string `json:"title"`
 	CreatedAt string `json:"created_at"`
+	ParentID  string `json:"parent_id,omitempty"`
 }
 
 type Part struct {
@@ -33,6 +35,29 @@ type MessageResponse struct {
 	Status string `json:"status"`
 }
 
+type MessageListEntry struct {
+	Info  MessageInfo   `json:"info"`
+	Parts []MessagePart `json:"parts"`
+}
+
+type MessageInfo struct {
+	ID        string `json:"id"`
+	Role      string `json:"role"`
+	Text      string `json:"text"`
+	SessionID string `json:"sessionID"`
+}
+
+type MessagePart struct {
+	ID        string         `json:"id"`
+	Type      string         `json:"type"`
+	Text      string         `json:"text,omitempty"`
+	Tool      string         `json:"tool,omitempty"`
+	CallID    string         `json:"callID,omitempty"`
+	MessageID string         `json:"messageID"`
+	SessionID string         `json:"sessionID"`
+	State     map[string]any `json:"state,omitempty"`
+}
+
 type ProviderResponse struct {
 	Providers []Provider `json:"providers"`
 }
@@ -40,6 +65,20 @@ type ProviderResponse struct {
 type Provider struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
+}
+
+type ProviderListItem struct {
+	ID     string               `json:"id"`
+	Name   string               `json:"name"`
+	Api    string               `json:"api"`
+	Env    []string             `json:"env"`
+	Models map[string]ModelInfo `json:"models"`
+}
+
+type ProviderListResponse struct {
+	All       []ProviderListItem  `json:"all"`
+	Default   map[string]string   `json:"default"`
+	Connected []string            `json:"connected"`
 }
 
 type ModelInfo struct {
@@ -80,8 +119,10 @@ type ConfigPayload struct {
 func NewClient(baseURL string) *Client {
 	logger.L.Info("creating opencode HTTP client", "base_url", baseURL)
 	return &Client{
-		baseURL:    baseURL,
-		httpClient: &http.Client{},
+		baseURL: baseURL,
+		httpClient: &http.Client{
+			Timeout: 30 * time.Second,
+		},
 	}
 }
 
@@ -178,7 +219,7 @@ func (c *Client) SendPromptAsync(sessionID, text string) error {
 	return nil
 }
 
-func (c *Client) ListMessages(sessionID string) ([]MessageResponse, error) {
+func (c *Client) ListMessages(sessionID string) ([]MessageListEntry, error) {
 	l := logger.L.With("component", "opencode_client", "method", "ListMessages")
 	url := fmt.Sprintf("%s/session/%s/message", c.baseURL, sessionID)
 	l.Debug("sending request", "url", url)
@@ -196,14 +237,14 @@ func (c *Client) ListMessages(sessionID string) ([]MessageResponse, error) {
 		return nil, fmt.Errorf("list messages returned %d: %s", resp.StatusCode, string(bodyBytes))
 	}
 
-	var messages []MessageResponse
-	if err := json.NewDecoder(resp.Body).Decode(&messages); err != nil {
+	var entries []MessageListEntry
+	if err := json.NewDecoder(resp.Body).Decode(&entries); err != nil {
 		l.Error("failed to decode response", "error", err)
 		return nil, fmt.Errorf("failed to decode messages response: %w", err)
 	}
 
-	l.Debug("messages listed", "count", len(messages))
-	return messages, nil
+	l.Debug("messages listed", "count", len(entries))
+	return entries, nil
 }
 
 func (c *Client) GetProviders() ([]Provider, error) {
@@ -229,6 +270,31 @@ func (c *Client) GetProviders() ([]Provider, error) {
 
 	l.Debug("providers fetched", "count", len(providerResp.Providers))
 	return providerResp.Providers, nil
+}
+
+func (c *Client) GetProviderList() (*ProviderListResponse, error) {
+	l := logger.L.With("component", "opencode_client", "method", "GetProviderList")
+	resp, err := c.httpClient.Get(c.baseURL + "/provider")
+	if err != nil {
+		l.Error("request failed", "error", err)
+		return nil, fmt.Errorf("get provider list request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		l.Error("non-OK response", "status", resp.StatusCode, "body", string(bodyBytes))
+		return nil, fmt.Errorf("get provider list returned %d: %s", resp.StatusCode, string(bodyBytes))
+	}
+
+	var result ProviderListResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		l.Error("failed to decode response", "error", err)
+		return nil, fmt.Errorf("failed to decode provider list response: %w", err)
+	}
+
+	l.Debug("provider list fetched", "all_count", len(result.All), "connected_count", len(result.Connected))
+	return &result, nil
 }
 
 func (c *Client) GetProvidersConfig() (*ProvidersConfigResponse, error) {
@@ -263,7 +329,7 @@ func (c *Client) SetConfig(payload ConfigPayload) error {
 	url := c.baseURL + "/config"
 	l.Debug("sending request", "url", url, "payload", string(jsonBody))
 
-	req, err := http.NewRequest(http.MethodPut, url, bytes.NewReader(jsonBody))
+	req, err := http.NewRequest(http.MethodPatch, url, bytes.NewReader(jsonBody))
 	if err != nil {
 		return fmt.Errorf("create set config request failed: %w", err)
 	}
@@ -364,4 +430,32 @@ func (c *Client) AbortSession(sessionID string) error {
 
 	l.Info("session aborted", "session_id", sessionID)
 	return nil
+}
+
+func (c *Client) ListSessions() ([]SessionResponse, error) {
+	l := logger.L.With("component", "opencode_client", "method", "ListSessions")
+	url := c.baseURL + "/session"
+	l.Debug("sending request", "url", url)
+
+	resp, err := c.httpClient.Get(url)
+	if err != nil {
+		l.Error("request failed", "error", err)
+		return nil, fmt.Errorf("list sessions request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		l.Error("non-OK response", "status", resp.StatusCode, "body", string(bodyBytes))
+		return nil, fmt.Errorf("list sessions returned %d: %s", resp.StatusCode, string(bodyBytes))
+	}
+
+	var sessions []SessionResponse
+	if err := json.NewDecoder(resp.Body).Decode(&sessions); err != nil {
+		l.Error("failed to decode response", "error", err)
+		return nil, fmt.Errorf("failed to decode sessions response: %w", err)
+	}
+
+	l.Info("sessions listed", "count", len(sessions))
+	return sessions, nil
 }
