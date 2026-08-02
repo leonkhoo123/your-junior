@@ -7,6 +7,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { getConfig } from "@/config"
+import { useArrowList } from "@/hooks/useArrowList"
+import { cn } from "@/lib/utils"
 
 interface SessionInfo {
   id: string
@@ -63,16 +65,28 @@ export function SessionSelectorModal({
     }
   }, [open, fetchSessions])
 
+  const { containerRef, selectedIndex, setSelectedIndex, handleKeyDown } = useArrowList<SessionInfo>({
+    items: sessions,
+    enabled: open,
+    onSelect: (s) => {
+      onSelectSession(s.id, s.title?.trim() ?? "Chat")
+      onOpenChange(false)
+    },
+  })
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[520px] p-0 gap-0 border-border bg-[#0d1117]">
+      <DialogContent
+        onKeyDown={handleKeyDown}
+        className="sm:max-w-[520px] p-0 gap-0 border-border bg-[#0d1117]"
+      >
         <DialogHeader className="px-4 py-3 border-b border-primary/10">
           <DialogTitle className="font-mono text-sm text-foreground">
             Sessions
           </DialogTitle>
         </DialogHeader>
 
-        <div className="max-h-[400px] overflow-y-auto">
+        <div ref={containerRef} className="max-h-[400px] overflow-y-auto">
           {loading && (
             <div className="flex items-center justify-center py-8">
               <Loader2 className="size-5 animate-spin text-muted-foreground/40" />
@@ -99,14 +113,19 @@ export function SessionSelectorModal({
           )}
 
           {!loading &&
-            sessions.map((s) => (
+            sessions.map((s, i) => (
               <button
                 key={s.id}
+                data-list-item
+                onMouseEnter={() => { setSelectedIndex(i) }}
                 onClick={() => {
-                  onSelectSession(s.id, s.title?.trim() || "Chat")
+                  onSelectSession(s.id, s.title?.trim() ?? "Chat")
                   onOpenChange(false)
                 }}
-                className="w-full px-4 py-3 text-left font-mono text-xs border-b border-primary/5 hover:bg-accent/30 transition-colors"
+                className={cn(
+                  "w-full px-4 py-3 text-left font-mono text-xs border-b border-primary/5 hover:bg-accent/30 transition-colors",
+                  selectedIndex === i && "bg-accent/40"
+                )}
               >
                 <div className="text-foreground/80 truncate">
                   {s.title?.trim() ? s.title : s.id}

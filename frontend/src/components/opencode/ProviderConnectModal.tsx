@@ -8,6 +8,7 @@ import {
 } from "@/components/ui/dialog"
 import { ApiKeyDialog } from "@/components/opencode/ApiKeyDialog"
 import { cn } from "@/lib/utils"
+import { useArrowList } from "@/hooks/useArrowList"
 
 interface AllProviderInfo {
   id: string
@@ -131,15 +132,26 @@ export function ProviderConnectModal({
     setApiKeyProvider(null)
   }
 
-  const renderProviderRow = (provider: ProviderEntry) => (
+  const allRows = useMemo<ProviderEntry[]>(() => [...popular, ...rest], [popular, rest])
+
+  const { containerRef, selectedIndex, setSelectedIndex, handleKeyDown } = useArrowList<ProviderEntry>({
+    items: allRows,
+    enabled: open,
+    onSelect: handleSelectProvider,
+  })
+
+  const renderProviderRow = (provider: ProviderEntry, index: number) => (
     <button
       key={provider.id}
+      data-list-item
+      onMouseEnter={() => { setSelectedIndex(index) }}
       onClick={() => { handleSelectProvider(provider) }}
       className={cn(
         "w-full flex items-center gap-3 px-5 py-2 text-left font-mono text-sm transition-colors",
         provider.connected
           ? "text-muted-foreground/70 cursor-default"
           : "text-foreground hover:bg-accent/60 cursor-pointer",
+        selectedIndex === index && "bg-accent/40"
       )}
     >
       <span className="flex-1 truncate">{provider.name}</span>
@@ -165,11 +177,14 @@ export function ProviderConnectModal({
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="sm:max-w-[520px] p-0 gap-0 border-border bg-[#0d1117]">
+        <DialogContent
+          onKeyDown={handleKeyDown}
+          className="sm:max-w-[520px] p-0 gap-0 border-border bg-[#0d1117]"
+        >
           <DialogHeader className="px-5 py-4 border-b border-primary/10">
             <DialogTitle className="text-base font-mono text-foreground">Connect a provider</DialogTitle>
           </DialogHeader>
-          <div className="max-h-[60vh] overflow-y-auto">
+          <div ref={containerRef} className="max-h-[60vh] overflow-y-auto">
             {hasAny ? (
               <div className="py-1">
                 {popular.length > 0 && (
@@ -179,7 +194,7 @@ export function ProviderConnectModal({
                         Popular
                       </span>
                     </div>
-                    {popular.map(renderProviderRow)}
+                    {popular.map((p, i) => renderProviderRow(p, i))}
                   </>
                 )}
 
@@ -194,7 +209,7 @@ export function ProviderConnectModal({
                         Providers
                       </span>
                     </div>
-                    {rest.map(renderProviderRow)}
+                    {rest.map((p, i) => renderProviderRow(p, popular.length + i))}
                   </>
                 )}
               </div>

@@ -1,7 +1,10 @@
 import { useState } from "react"
 import { useChatMessages } from "@/hooks/useChatMessages"
 import { ChatPanel } from "@/components/opencode/ChatPanel"
-import { ModelSelectorModal } from "@/components/opencode/ModelSelectorModal"
+import {
+  ModelSelectorModal,
+  type VariantTarget,
+} from "@/components/opencode/ModelSelectorModal"
 import { SessionSelectorModal } from "@/components/opencode/SessionSelectorModal"
 import type { MessageHandler } from "@/hooks/useOpencodeWebSocket"
 
@@ -62,6 +65,30 @@ export function OpencodeChatPane({
   const [modelModalOpen, setModelModalOpen] = useState(false)
   const [sessionModalOpen, setSessionModalOpen] = useState(false)
   const [thinkingEnabled, setThinkingEnabled] = useState(false)
+  const [variantTarget, setVariantTarget] = useState<VariantTarget | null>(null)
+
+  const parsedModel = currentModel
+    ? (() => {
+        const atIndex = currentModel.lastIndexOf("@")
+        let modelPart = currentModel
+        if (atIndex > 0) modelPart = currentModel.slice(0, atIndex)
+        const [providerID, ...rest] = modelPart.split("/")
+        return { providerID, modelID: rest.join("/") }
+      })()
+    : null
+
+  const findVariantTarget = (): VariantTarget | null => {
+    if (!parsedModel || !providers) return null
+    const provider = providers.find((pr) => pr.id === parsedModel.providerID)
+    const model = provider?.models[parsedModel.modelID]
+    if (!model?.variants || Object.keys(model.variants).length === 0) return null
+    return {
+      providerID: parsedModel.providerID,
+      modelID: parsedModel.modelID,
+      modelName: model.name || parsedModel.modelID,
+      variants: model.variants,
+    }
+  }
 
   const handleSendMessage = (text: string) => {
     if (!sessionId) return
@@ -70,6 +97,11 @@ export function OpencodeChatPane({
       type: "send_message",
       data: { session_id: sessionId, text },
     })
+  }
+
+  const openModelModal = (variantTargetOverride: VariantTarget | null = null) => {
+    setVariantTarget(variantTargetOverride)
+    setModelModalOpen(true)
   }
 
   const handleSlashCommand = (command: string) => {
@@ -81,25 +113,17 @@ export function OpencodeChatPane({
         setThinkingEnabled((prev) => !prev)
         break
       case "model":
-      case "variants":
       case "connect":
-        setModelModalOpen(true)
+        openModelModal(null)
+        break
+      case "variants":
+        openModelModal(findVariantTarget())
         break
       case "session":
         setSessionModalOpen(true)
         break
     }
   }
-
-  const parsedModel = currentModel
-    ? (() => {
-        const atIndex = currentModel.lastIndexOf("@")
-        let modelPart = currentModel
-        if (atIndex > 0) modelPart = currentModel.slice(0, atIndex)
-        const [providerID, ...rest] = modelPart.split("/")
-        return { providerID, modelID: rest.join("/") }
-      })()
-    : null
 
   const displayName = currentModel
     ? (() => {
@@ -112,7 +136,15 @@ export function OpencodeChatPane({
     : currentModel
 
   return (
-    <div className="flex flex-col flex-1 min-h-0 border border-primary/10 rounded-md overflow-hidden bg-[#0d1117]">
+    <div
+      className="flex flex-col flex-1 min-h-0 border border-primary/10 rounded-md overflow-hidden bg-[#0d1117]"
+      onMouseDown={(e) => {
+        const target = e.target as HTMLElement
+        if (target.closest("button, a, input, textarea, select, [contenteditable]")) return
+        e.preventDefault()
+        e.currentTarget.querySelector<HTMLInputElement>("input")?.focus()
+      }}
+    >
       <div className="flex items-center gap-2 px-4 py-1.5 border-b border-primary/10 bg-[#0d1117] shrink-0">
         <span className="font-mono text-xs text-muted-foreground/50">
           {sessionTitle ?? "Chat"}
@@ -121,7 +153,7 @@ export function OpencodeChatPane({
         {providers && providers.length > 0 && currentModel && onModelChange && (
             <button
               onClick={() => {
-                setModelModalOpen(true)
+                openModelModal(null)
               }}
               className="h-6 px-2 text-xs font-mono bg-transparent hover:bg-accent/50 rounded-md transition-colors flex items-center gap-1.5"
             >
@@ -149,6 +181,7 @@ export function OpencodeChatPane({
           currentModel={currentModel ?? ""}
           onModelChange={onModelChange ?? NOOP_MODEL}
           onSetApiKey={onSetApiKey ?? NOOP}
+          initialVariant={variantTarget}
         />
         <SessionSelectorModal
           open={sessionModalOpen}

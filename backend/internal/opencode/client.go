@@ -126,17 +126,12 @@ func NewClient(baseURL string) *Client {
 	}
 }
 
-func (c *Client) CreateSession(title string) (*SessionResponse, error) {
+func (c *Client) CreateSession() (*SessionResponse, error) {
 	l := logger.L.With("component", "opencode_client", "method", "CreateSession")
-	body := map[string]string{
-		"title": title,
-	}
-	jsonBody, _ := json.Marshal(body)
-
 	url := c.baseURL + "/session"
-	l.Debug("sending request", "url", url, "title", title)
+	l.Debug("sending request", "url", url)
 
-	resp, err := c.httpClient.Post(url, "application/json", bytes.NewReader(jsonBody))
+	resp, err := c.httpClient.Post(url, "application/json", nil)
 	if err != nil {
 		l.Error("request failed", "error", err)
 		return nil, fmt.Errorf("create session request failed: %w", err)

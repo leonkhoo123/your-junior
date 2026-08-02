@@ -433,7 +433,7 @@ func (h *opencodeRouteHandler) handleCommand(client *opencode.WSClient, msg open
 				return
 			}
 		}
-		session, err := h.client.CreateSession("Chat")
+		session, err := h.client.CreateSession()
 		if err != nil {
 			l.Error("failed to create session", "error", err)
 			h.hub.BroadcastTo(client, opencode.WSMessage{

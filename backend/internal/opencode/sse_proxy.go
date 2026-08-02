@@ -560,6 +560,32 @@ func (p *SSEProxy) handleEvent(eventType, rawData, jsonType string) {
 
 	case "session.updated":
 		l.Debug("received SSE event", "data_len", len(rawData))
+		var data map[string]any
+		if err := json.Unmarshal([]byte(rawData), &data); err != nil {
+			l.Warn("failed to parse session.updated", "error", err)
+			return
+		}
+		props, _ := data["properties"].(map[string]any)
+		if props == nil {
+			return
+		}
+		info, _ := props["info"].(map[string]any)
+		if info == nil {
+			return
+		}
+		title, _ := info["title"].(string)
+		sessionID, _ := props["sessionID"].(string)
+		if title == "" {
+			return
+		}
+		l.Info("session title updated", "session_id", sessionID, "title", title)
+		p.hub.Broadcast(WSMessage{
+			Type: WSTypeSessionUpdated,
+			Data: map[string]any{
+				"session_id": sessionID,
+				"title":      title,
+			},
+		})
 
 	case "session.idle":
 		l.Debug("received SSE event", "data_len", len(rawData))

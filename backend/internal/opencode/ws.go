@@ -44,7 +44,8 @@ const (
 	WSTypeProvidersList  WSMessageType = "providers_list"
 	WSTypeModelChanged   WSMessageType = "model_changed"
 	WSTypeError          WSMessageType = "error"
-	WSTypePartUpdated    WSMessageType = "part_updated"
+	WSTypePartUpdated     WSMessageType = "part_updated"
+	WSTypeSessionUpdated  WSMessageType = "session_updated"
 )
 
 type WSMessage struct {

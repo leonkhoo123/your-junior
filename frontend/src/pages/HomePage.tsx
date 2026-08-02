@@ -201,6 +201,17 @@ export default function HomePage() {
   }, [on, setCurrentSessionId, setSessionTitle])
 
   useEffect(() => {
+    const unsub = on("session_updated", (msg) => {
+      const title = msg.data?.title as string | undefined
+      logger.info("Received session_updated", { title })
+      if (title) {
+        setSessionTitle(title)
+      }
+    })
+    return unsub
+  }, [on, setSessionTitle])
+
+  useEffect(() => {
     const unsub = on("error", (msg) => {
       const message = msg.data?.message as string | undefined
       logger.error("Received server error", { message })
