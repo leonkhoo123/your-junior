@@ -147,7 +147,7 @@ func main() {
 	controller.SetupAdminRoutes(router, authInstance, authCfg)
 
 	controller.SetupOpencodeRoutes(router, cfg, ocManager, ocHub, worktreeSvc)
-	controller.SetupGitRoutes(router, projectSvc, worktreeSvc)
+	controller.SetupGitRoutes(router, projectSvc, worktreeSvc, ocManager)
 
 	distFS, err := fs.Sub(ui.Assets, "dist")
 	if err != nil {

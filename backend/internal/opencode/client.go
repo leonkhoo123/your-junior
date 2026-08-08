@@ -464,6 +464,33 @@ func (c *Client) AbortSession(sessionID string) error {
 	return nil
 }
 
+func (c *Client) DeleteSession(sessionID string) error {
+	l := logger.L.With("component", "opencode_client", "method", "DeleteSession")
+	url := fmt.Sprintf("%s/session/%s", c.baseURL, sessionID)
+	l.Debug("sending request", "url", url)
+
+	req, err := http.NewRequest(http.MethodDelete, url, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create delete request: %w", err)
+	}
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		l.Error("request failed", "error", err)
+		return fmt.Errorf("delete session request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		l.Error("non-OK response", "status", resp.StatusCode, "body", string(bodyBytes))
+		return fmt.Errorf("delete session returned %d: %s", resp.StatusCode, string(bodyBytes))
+	}
+
+	l.Info("session deleted", "session_id", sessionID)
+	return nil
+}
+
 func (c *Client) ListSessions() ([]SessionResponse, error) {
 	l := logger.L.With("component", "opencode_client", "method", "ListSessions")
 	url := c.baseURL + "/session"

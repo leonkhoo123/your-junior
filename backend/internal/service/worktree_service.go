@@ -68,6 +68,10 @@ func (s *WorktreeService) RemoveWorktree(id int64) error {
 		return fmt.Errorf("project not found: %w", err)
 	}
 
+	if err := DeleteBranch(project.BarePath, wt.BranchName); err != nil {
+		logger.L.Warn("failed to delete git branch", "branch", wt.BranchName, "error", err)
+	}
+
 	if err := PruneWorktree(wt.WorktreePath, project.BarePath); err != nil {
 		logger.L.Warn("failed to prune worktree directory", "path", wt.WorktreePath, "error", err)
 	}

@@ -1,4 +1,5 @@
-import { GitBranch, Globe } from "lucide-react"
+import { GitBranch, Globe, Trash2 } from "lucide-react"
+import { Button } from "@/components/ui/button"
 
 interface WorktreeItemProps {
   worktree: {
@@ -11,6 +12,7 @@ interface WorktreeItemProps {
   }
   isSelected: boolean
   onClick: () => void
+  onDelete: () => void
 }
 
 const statusColors: Record<string, string> = {
@@ -29,11 +31,11 @@ const statusLabels: Record<string, string> = {
   removed: "removed",
 }
 
-export function WorktreeItem({ worktree, isSelected, onClick }: WorktreeItemProps) {
+export function WorktreeItem({ worktree, isSelected, onClick, onDelete }: WorktreeItemProps) {
   const hasSession = !!worktree.opencode_session_id
   return (
     <div
-      className={`flex items-center gap-2 px-6 py-1.5 rounded-md hover:bg-accent/50 cursor-pointer transition-colors ${
+      className={`flex items-center gap-2 px-6 py-1.5 rounded-md hover:bg-accent/50 cursor-pointer transition-colors group ${
         isSelected ? "bg-accent/80 border border-primary/20" : ""
       }`}
       onClick={onClick}
@@ -51,6 +53,18 @@ export function WorktreeItem({ worktree, isSelected, onClick }: WorktreeItemProp
           <Globe className="size-2.5 text-green-500 shrink-0" />
         </span>
       )}
+      <Button
+        variant="ghost"
+        size="icon-sm"
+        className="h-5 w-5 text-muted-foreground hover:text-red-500 opacity-0 group-hover:opacity-100 shrink-0"
+        onClick={(e) => {
+          e.stopPropagation()
+          onDelete()
+        }}
+        title="Delete branch"
+      >
+        <Trash2 className="size-3" />
+      </Button>
     </div>
   )
 }

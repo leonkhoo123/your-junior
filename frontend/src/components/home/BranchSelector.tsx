@@ -1,8 +1,25 @@
 import { Loader2, Search } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import axiosLayer from "@/api/axiosLayer"
+
+const GIT_BRANCH_INVALID = /[\s~^:?*[\]\\\x00-\x1f\x7f]/
+const GIT_BRANCH_BAD_PATTERNS = [/\.\./, /@\{/, /\.lock$/i, /\.git\b/i]
+const GIT_BRANCH_BAD_START = /^[-/]/
+const GIT_BRANCH_BAD_END = /[./]$/
+
+function validateBranchName(name: string): string | null {
+  if (!name) return null
+  if (GIT_BRANCH_INVALID.test(name)) return "Contains invalid characters"
+  if (GIT_BRANCH_BAD_START.test(name)) return "Cannot start with - or /"
+  if (GIT_BRANCH_BAD_END.test(name)) return "Cannot end with . or /"
+  for (const p of GIT_BRANCH_BAD_PATTERNS) {
+    if (p.test(name)) return "Invalid sequence in name"
+  }
+  if (name === "HEAD" || name === "@") return "Reserved name"
+  return null
+}
 
 interface BranchSelectorProps {
   projectId: number
@@ -14,9 +31,10 @@ export function BranchSelector({ projectId, onSelectBranch, onCancel }: BranchSe
   const [branches, setBranches] = useState<string[]>([])
   const [search, setSearch] = useState("")
   const [loading, setLoading] = useState(true)
-  const [creating, setCreating] = useState(false)
   const [newBranchName, setNewBranchName] = useState("")
   const [showNewBranchInput, setShowNewBranchInput] = useState(false)
+
+  const branchError = useMemo(() => validateBranchName(newBranchName), [newBranchName])
 
   useEffect(() => {
     setLoading(true)
@@ -35,17 +53,10 @@ export function BranchSelector({ projectId, onSelectBranch, onCancel }: BranchSe
     b.toLowerCase().includes(search.toLowerCase()),
   )
 
-  const handleCreateNew = async () => {
-    if (!newBranchName.trim()) return
-    setCreating(true)
-    try {
-      await axiosLayer.post(`/projects/${projectId}/worktrees`, {
-        branch: newBranchName.trim(),
-      })
-      onSelectBranch(newBranchName.trim())
-    } catch {
-      setCreating(false)
-    }
+  const handleCreateNew = () => {
+    const name = newBranchName.trim()
+    if (!name || validateBranchName(name)) return
+    onSelectBranch(name)
   }
 
   return (
@@ -88,30 +99,31 @@ export function BranchSelector({ projectId, onSelectBranch, onCancel }: BranchSe
       </div>
 
       {showNewBranchInput ? (
-        <div className="flex gap-2 items-center">
-          <Input
-            value={newBranchName}
-            onChange={(e) => setNewBranchName(e.target.value)}
-            placeholder="branch name"
-            className="font-mono text-xs h-7 flex-1"
-            onKeyDown={(e) => {
-              if (e.key === "Enter") handleCreateNew()
-              if (e.key === "Escape") setShowNewBranchInput(false)
-            }}
-            autoFocus
-          />
-          <Button
-            size="sm"
-            className="h-7 font-mono text-xs"
-            onClick={handleCreateNew}
-            disabled={!newBranchName.trim() || creating}
-          >
-            {creating ? (
-              <Loader2 className="size-3 animate-spin" />
-            ) : (
-              "Create"
-            )}
-          </Button>
+        <div className="flex flex-col gap-1">
+          <div className="flex gap-2 items-center">
+            <Input
+              value={newBranchName}
+              onChange={(e) => setNewBranchName(e.target.value)}
+              placeholder="branch name"
+              className={`font-mono text-xs h-7 flex-1 ${branchError ? "border-destructive focus-visible:ring-destructive" : ""}`}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !branchError) handleCreateNew()
+                if (e.key === "Escape") setShowNewBranchInput(false)
+              }}
+              autoFocus
+            />
+            <Button
+              size="sm"
+              className="h-7 font-mono text-xs"
+              onClick={handleCreateNew}
+              disabled={!newBranchName.trim() || !!branchError}
+            >
+              Create
+            </Button>
+          </div>
+          {branchError && (
+            <span className="font-mono text-[10px] text-destructive">{branchError}</span>
+          )}
         </div>
       ) : (
         <Button

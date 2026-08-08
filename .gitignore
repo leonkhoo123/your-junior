@@ -11,6 +11,7 @@ server
 # Database
 db/
 backend/db/
+*.db
 
 # Project data (bare repos, worktrees) — except opencode config
 project/*

@@ -6,15 +6,17 @@ import (
 
 	"your-junior/internal/logger"
 	"your-junior/internal/model"
+	"your-junior/internal/opencode"
 	"your-junior/internal/service"
 
 	"github.com/gin-gonic/gin"
 )
 
-func SetupGitRoutes(router gin.IRouter, projectSvc *service.ProjectService, worktreeSvc *service.WorktreeService) {
+func SetupGitRoutes(router gin.IRouter, projectSvc *service.ProjectService, worktreeSvc *service.WorktreeService, ocManager *opencode.Manager) {
 	handler := &gitHandler{
 		projectSvc:  projectSvc,
 		worktreeSvc: worktreeSvc,
+		ocManager:   ocManager,
 	}
 
 	g := router.Group("/api")
@@ -31,6 +33,7 @@ func SetupGitRoutes(router gin.IRouter, projectSvc *service.ProjectService, work
 type gitHandler struct {
 	projectSvc  *service.ProjectService
 	worktreeSvc *service.WorktreeService
+	ocManager   *opencode.Manager
 }
 
 type addProjectRequest struct {
@@ -105,6 +108,16 @@ func (h *gitHandler) removeProject(c *gin.Context) {
 			"message": "invalid project id",
 		})
 		return
+	}
+
+	worktrees, _ := h.worktreeSvc.ListWorktrees(id)
+	client := opencode.NewClient(h.ocManager.GetBaseURL())
+	for _, wt := range worktrees {
+		if wt.OpencodeSessionID != nil && *wt.OpencodeSessionID != "" {
+			if err := client.DeleteSession(*wt.OpencodeSessionID); err != nil {
+				logger.L.Warn("failed to delete opencode session", "session_id", *wt.OpencodeSessionID, "error", err)
+			}
+		}
 	}
 
 	if err := h.projectSvc.RemoveProject(id); err != nil {
@@ -260,6 +273,23 @@ func (h *gitHandler) removeWorktree(c *gin.Context) {
 			"message": "invalid worktree id",
 		})
 		return
+	}
+
+	wt, err := h.worktreeSvc.GetWorktree(id)
+	if err != nil {
+		logger.L.Error("failed to get worktree", "id", id, "error", err)
+		c.JSON(http.StatusNotFound, gin.H{
+			"status":  "error",
+			"message": "worktree not found",
+		})
+		return
+	}
+
+	if wt.OpencodeSessionID != nil && *wt.OpencodeSessionID != "" {
+		client := opencode.NewClient(h.ocManager.GetBaseURL())
+		if err := client.DeleteSession(*wt.OpencodeSessionID); err != nil {
+			logger.L.Warn("failed to delete opencode session", "session_id", *wt.OpencodeSessionID, "error", err)
+		}
 	}
 
 	if err := h.worktreeSvc.RemoveWorktree(id); err != nil {

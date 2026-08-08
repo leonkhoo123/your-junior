@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback } from "react"
 import { GitBranch, Plus, FolderGit2 } from "lucide-react"
+import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
+import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { ProjectItem } from "./ProjectItem"
 import { WorktreeList } from "./WorktreeList"
 import { AddProjectDialog } from "./AddProjectDialog"
@@ -36,6 +38,9 @@ export function ProjectPanel({ selectedWorktreePath, onSelectWorktree }: Project
   const [loadingWorktrees, setLoadingWorktrees] = useState<Set<number>>(new Set())
   const [addDialogOpen, setAddDialogOpen] = useState(false)
   const [branchSelector, setBranchSelector] = useState<{ projectId: number; projectName: string } | null>(null)
+  const [projectToDelete, setProjectToDelete] = useState<ProjectData | null>(null)
+  const [worktreeToDelete, setWorktreeToDelete] = useState<WorktreeData | null>(null)
+  const [deleting, setDeleting] = useState(false)
 
   const fetchProjects = useCallback(async () => {
     try {
@@ -52,6 +57,24 @@ export function ProjectPanel({ selectedWorktreePath, onSelectWorktree }: Project
     fetchProjects()
   }, [fetchProjects])
 
+  const fetchWorktrees = useCallback(async (projectId: number) => {
+    setLoadingWorktrees((prev) => new Set(prev).add(projectId))
+    try {
+      const res = await axiosLayer.get(`/projects/${projectId}/worktrees`)
+      if (res.data.status === "success" && Array.isArray(res.data.data)) {
+        setWorktrees((prev) => new Map(prev).set(projectId, res.data.data))
+      }
+    } catch {
+      // ignore
+    } finally {
+      setLoadingWorktrees((prev) => {
+        const next = new Set(prev)
+        next.delete(projectId)
+        return next
+      })
+    }
+  }, [])
+
   const handleToggleProject = async (projectId: number) => {
     setExpandedProjects((prev) => {
       const next = new Set(prev)
@@ -65,21 +88,7 @@ export function ProjectPanel({ selectedWorktreePath, onSelectWorktree }: Project
 
     const willBeExpanded = !expandedProjects.has(projectId)
     if (willBeExpanded && !worktrees.has(projectId)) {
-      setLoadingWorktrees((prev) => new Set(prev).add(projectId))
-      try {
-        const res = await axiosLayer.get(`/projects/${projectId}/worktrees`)
-        if (res.data.status === "success" && Array.isArray(res.data.data)) {
-          setWorktrees((prev) => new Map(prev).set(projectId, res.data.data))
-        }
-      } catch {
-        // ignore
-      } finally {
-        setLoadingWorktrees((prev) => {
-          const next = new Set(prev)
-          next.delete(projectId)
-          return next
-        })
-      }
+      fetchWorktrees(projectId)
     }
   }
 
@@ -100,6 +109,57 @@ export function ProjectPanel({ selectedWorktreePath, onSelectWorktree }: Project
       }
     } catch {
       // ignore
+    }
+  }
+
+  const handleDeleteProject = async () => {
+    if (!projectToDelete) return
+    setDeleting(true)
+    try {
+      const res = await axiosLayer.delete(`/projects/${projectToDelete.id}`)
+      if (res.data.status === "success") {
+        toast.success(`Project "${projectToDelete.name}" removed`)
+        setProjectToDelete(null)
+        await fetchProjects()
+      } else {
+        toast.error(res.data.message ?? "Failed to delete project")
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Failed to delete project"
+      toast.error(msg)
+    } finally {
+      setDeleting(false)
+    }
+  }
+
+  const handleDeleteWorktree = async () => {
+    if (!worktreeToDelete) return
+    setDeleting(true)
+    try {
+      const res = await axiosLayer.delete(`/worktrees/${worktreeToDelete.id}`)
+      if (res.data.status === "success") {
+        toast.success(`Branch "${worktreeToDelete.branch_name}" removed`)
+        const projectId = worktreeToDelete.id
+        // Find which project this worktree belongs to by scanning the worktrees map
+        let parentProjectId = 0
+        for (const [pid, wts] of worktrees) {
+          if (wts.some((wt) => wt.id === worktreeToDelete.id)) {
+            parentProjectId = pid
+            break
+          }
+        }
+        setWorktreeToDelete(null)
+        if (parentProjectId) {
+          await fetchWorktrees(parentProjectId)
+        }
+      } else {
+        toast.error(res.data.message ?? "Failed to delete branch")
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Failed to delete branch"
+      toast.error(msg)
+    } finally {
+      setDeleting(false)
     }
   }
 
@@ -146,6 +206,7 @@ export function ProjectPanel({ selectedWorktreePath, onSelectWorktree }: Project
                         projectName: project.name,
                       })
                     }
+                    onDelete={() => setProjectToDelete(project)}
                   />
 
                   {isExpanded && branchSelector && branchSelector.projectId === project.id && (
@@ -163,6 +224,7 @@ export function ProjectPanel({ selectedWorktreePath, onSelectWorktree }: Project
                       worktrees={worktrees.get(project.id) ?? []}
                       selectedWorktreePath={selectedWorktreePath}
                       onSelectWorktree={onSelectWorktree}
+                      onDeleteWorktree={setWorktreeToDelete}
                     />
                   )}
                 </div>
@@ -176,6 +238,32 @@ export function ProjectPanel({ selectedWorktreePath, onSelectWorktree }: Project
         open={addDialogOpen}
         onOpenChange={setAddDialogOpen}
         onProjectAdded={() => fetchProjects()}
+      />
+
+      <ConfirmDialog
+        open={projectToDelete !== null}
+        onOpenChange={(open) => {
+          if (!open) setProjectToDelete(null)
+        }}
+        title="Delete Project"
+        description={`Are you sure you want to delete "${projectToDelete?.name ?? ""}"? This will permanently delete the repository and all associated branches, worktrees, and sessions.`}
+        confirmLabel="Delete Project"
+        variant="destructive"
+        loading={deleting}
+        onConfirm={handleDeleteProject}
+      />
+
+      <ConfirmDialog
+        open={worktreeToDelete !== null}
+        onOpenChange={(open) => {
+          if (!open) setWorktreeToDelete(null)
+        }}
+        title="Delete Branch"
+        description={`Are you sure you want to delete branch "${worktreeToDelete?.branch_name ?? ""}"? This will delete the branch both locally and remotely, and remove all associated data.`}
+        confirmLabel="Delete Branch"
+        variant="destructive"
+        loading={deleting}
+        onConfirm={handleDeleteWorktree}
       />
     </div>
   )

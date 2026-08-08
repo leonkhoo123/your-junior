@@ -13,9 +13,10 @@ interface WorktreeListProps {
   worktrees: WorktreeData[]
   selectedWorktreePath: string | null
   onSelectWorktree: (worktree: WorktreeData) => void
+  onDeleteWorktree: (worktree: WorktreeData) => void
 }
 
-export function WorktreeList({ worktrees, selectedWorktreePath, onSelectWorktree }: WorktreeListProps) {
+export function WorktreeList({ worktrees, selectedWorktreePath, onSelectWorktree, onDeleteWorktree }: WorktreeListProps) {
   if (worktrees.length === 0) {
     return (
       <div className="px-6 py-2">
@@ -34,6 +35,7 @@ export function WorktreeList({ worktrees, selectedWorktreePath, onSelectWorktree
           worktree={wt}
           isSelected={selectedWorktreePath === wt.worktree_path}
           onClick={() => onSelectWorktree(wt)}
+          onDelete={() => onDeleteWorktree(wt)}
         />
       ))}
     </div>

@@ -1,4 +1,4 @@
-import { FolderGit2, ChevronRight, ChevronDown, Loader2, Plus } from "lucide-react"
+import { FolderGit2, ChevronRight, ChevronDown, Loader2, Plus, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
 interface ProjectItemProps {
@@ -12,9 +12,10 @@ interface ProjectItemProps {
   isLoading: boolean
   onToggle: () => void
   onAddWorktree: () => void
+  onDelete: () => void
 }
 
-export function ProjectItem({ project, isExpanded, isLoading, onToggle, onAddWorktree }: ProjectItemProps) {
+export function ProjectItem({ project, isExpanded, isLoading, onToggle, onAddWorktree, onDelete }: ProjectItemProps) {
   return (
     <div>
       <div
@@ -34,18 +35,32 @@ export function ProjectItem({ project, isExpanded, isLoading, onToggle, onAddWor
           <Loader2 className="size-3 animate-spin text-yellow-500 shrink-0" />
         )}
         {isExpanded && (
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            className="h-5 w-5 text-muted-foreground hover:text-foreground opacity-0 group-hover:opacity-100 shrink-0"
-            onClick={(e) => {
-              e.stopPropagation()
-              onAddWorktree()
-            }}
-            title="New worktree"
-          >
-            <Plus className="size-3" />
-          </Button>
+          <>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              className="h-5 w-5 text-muted-foreground hover:text-foreground opacity-0 group-hover:opacity-100 shrink-0"
+              onClick={(e) => {
+                e.stopPropagation()
+                onAddWorktree()
+              }}
+              title="New worktree"
+            >
+              <Plus className="size-3" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              className="h-5 w-5 text-muted-foreground hover:text-red-500 opacity-0 group-hover:opacity-100 shrink-0"
+              onClick={(e) => {
+                e.stopPropagation()
+                onDelete()
+              }}
+              title="Delete project"
+            >
+              <Trash2 className="size-3" />
+            </Button>
+          </>
         )}
       </div>
 
