@@ -77,20 +77,20 @@ type ProviderListItem struct {
 }
 
 type ProviderListResponse struct {
-	All       []ProviderListItem  `json:"all"`
-	Default   map[string]string   `json:"default"`
-	Connected []string            `json:"connected"`
+	All       []ProviderListItem `json:"all"`
+	Default   map[string]string  `json:"default"`
+	Connected []string           `json:"connected"`
 }
 
 type ModelInfo struct {
-	ID          string                   `json:"id"`
-	Name        string                   `json:"name"`
-	ProviderID  string                   `json:"provider_id"`
-	Cost        *ModelCost               `json:"cost,omitempty"`
-	Variants    map[string]any           `json:"variants,omitempty"`
-	ReleaseDate string                   `json:"release_date,omitempty"`
-	Status      string                   `json:"status,omitempty"`
-	Capabilities *ModelCapabilities      `json:"capabilities,omitempty"`
+	ID           string             `json:"id"`
+	Name         string             `json:"name"`
+	ProviderID   string             `json:"provider_id"`
+	Cost         *ModelCost         `json:"cost,omitempty"`
+	Variants     map[string]any     `json:"variants,omitempty"`
+	ReleaseDate  string             `json:"release_date,omitempty"`
+	Status       string             `json:"status,omitempty"`
+	Capabilities *ModelCapabilities `json:"capabilities,omitempty"`
 }
 
 type ModelCost struct {
@@ -103,7 +103,7 @@ type ModelCapabilities struct {
 }
 
 type ProvidersConfigResponse struct {
-	Providers []ProviderConfig `json:"providers"`
+	Providers []ProviderConfig  `json:"providers"`
 	Default   map[string]string `json:"default"`
 }
 
@@ -114,9 +114,9 @@ type ProviderConfig struct {
 }
 
 type AgentInfo struct {
-	ID          string `json:"id"`
-	Mode        string `json:"mode"`
-	Hidden      bool   `json:"hidden"`
+	ID     string `json:"id"`
+	Mode   string `json:"mode"`
+	Hidden bool   `json:"hidden"`
 }
 
 type ConfigPayload struct {
@@ -133,11 +133,16 @@ func NewClient(baseURL string) *Client {
 	}
 }
 
-func (c *Client) CreateSession(model, variant string) (*SessionResponse, error) {
+func (c *Client) CreateSession(model, variant, directory string) (*SessionResponse, error) {
 	l := logger.L.With("component", "opencode_client", "method", "CreateSession")
-	url := c.baseURL + "/session"
+	reqURL := c.baseURL + "/session"
 
-	var body io.Reader
+	payload := map[string]any{}
+	if directory != "" {
+		payload["location"] = map[string]any{
+			"directory": directory,
+		}
+	}
 	if model != "" {
 		parts := strings.SplitN(model, "/", 2)
 		providerID := parts[0]
@@ -145,23 +150,25 @@ func (c *Client) CreateSession(model, variant string) (*SessionResponse, error) 
 		if len(parts) > 1 {
 			modelID = parts[1]
 		}
-		payload := map[string]any{
-			"model": map[string]any{
-				"providerID": providerID,
-				"id":         modelID,
-			},
+		payload["model"] = map[string]any{
+			"providerID": providerID,
+			"id":         modelID,
 		}
 		if variant != "" && variant != "default" {
 			payload["model"].(map[string]any)["variant"] = variant
 		}
-		jsonBody, _ := json.Marshal(payload)
-		body = bytes.NewReader(jsonBody)
-		l.Debug("sending request", "url", url, "model", model, "variant", variant)
-	} else {
-		l.Debug("sending request", "url", url)
 	}
 
-	resp, err := c.httpClient.Post(url, "application/json", body)
+	var body io.Reader
+	if len(payload) > 0 {
+		jsonBody, _ := json.Marshal(payload)
+		body = bytes.NewReader(jsonBody)
+		l.Debug("sending request", "url", reqURL, "model", model, "variant", variant, "directory", directory)
+	} else {
+		l.Debug("sending request", "url", reqURL)
+	}
+
+	resp, err := c.httpClient.Post(reqURL, "application/json", body)
 	if err != nil {
 		l.Error("request failed", "error", err)
 		return nil, fmt.Errorf("create session request failed: %w", err)

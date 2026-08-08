@@ -50,8 +50,9 @@ const (
 )
 
 type WSMessage struct {
-	Type WSMessageType  `json:"type"`
-	Data map[string]any `json:"data,omitempty"`
+	Type      WSMessageType  `json:"type"`
+	Directory string         `json:"directory,omitempty"`
+	Data      map[string]any `json:"data,omitempty"`
 }
 
 type WSClient struct {

@@ -77,10 +77,10 @@ func Load() *CloudConfig {
 			LogLevel:       getEnv("LOG_LEVEL", "info"),
 		},
 		Auth: AuthConfig{
-			AppJwt:                   getEnv("APP_JWT", ""),
-			SecureMode:               getSecureMode(appEnv),
+			AppJwt:                     getEnv("APP_JWT", ""),
+			SecureMode:                 getSecureMode(appEnv),
 			AllowUnsafeUnprotectedMode: strings.EqualFold(getEnv("ALLOW_UNSAFE_UNPROTECTED_MODE", ""), "true"),
-			TrustedProxyCIDRs:        parseCIDRList(getEnv("TRUSTED_PROXY_CIDRS", "")),
+			TrustedProxyCIDRs:          parseCIDRList(getEnv("TRUSTED_PROXY_CIDRS", "")),
 		},
 		Defaults: AppDefaults{
 			ServiceName: getEnv("DEFAULT_SERVICE_NAME", "Your Junior"),

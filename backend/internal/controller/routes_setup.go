@@ -10,20 +10,20 @@ import (
 	"your-junior/internal/logger"
 
 	gonetauth "github.com/leonkhoo123/gonet-auth"
+	authgin "github.com/leonkhoo123/gonet-auth/adapters/gin"
 	"github.com/leonkhoo123/gonet-auth/auth"
 	"github.com/leonkhoo123/gonet-auth/ratelimit"
-	authgin "github.com/leonkhoo123/gonet-auth/adapters/gin"
 
 	"github.com/gin-gonic/gin"
 )
 
 var (
-	loginStore        = NewMemoryRateLimiterStore(1, 5)
-	mobileLoginStore  = NewMemoryRateLimiterStore(1, 5)
-	mobileMfaStore    = NewMemoryRateLimiterStore(1, 5)
-	refreshStore      = NewMemoryRateLimiterStore(5, 10)
-	setupStore        = NewMemoryRateLimiterStore(1, 5)
-	logoutStore       = NewMemoryRateLimiterStore(5, 10)
+	loginStore       = NewMemoryRateLimiterStore(1, 5)
+	mobileLoginStore = NewMemoryRateLimiterStore(1, 5)
+	mobileMfaStore   = NewMemoryRateLimiterStore(1, 5)
+	refreshStore     = NewMemoryRateLimiterStore(5, 10)
+	setupStore       = NewMemoryRateLimiterStore(1, 5)
+	logoutStore      = NewMemoryRateLimiterStore(5, 10)
 
 	loginLimiter       = ratelimit.NewIPRateLimiter(loginStore)
 	mobileLoginLimiter = ratelimit.NewIPRateLimiter(mobileLoginStore)

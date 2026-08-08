@@ -168,11 +168,13 @@ export function OpencodeChatPane({
   return (
     <div
       className="flex flex-col flex-1 min-h-0 border border-primary/10 rounded-md overflow-hidden bg-chat-bg"
-      onMouseDown={(e) => {
+      onMouseUp={(e) => {
         const target = e.target as HTMLElement
         if (target.closest("button, a, input, textarea, select, [contenteditable]")) return
-        e.preventDefault()
-        e.currentTarget.querySelector<HTMLInputElement>("input")?.focus()
+        const sel = window.getSelection()
+        if (sel && sel.toString().length > 0) return
+        const input = e.currentTarget.querySelector<HTMLInputElement>("input")
+        input?.focus()
       }}
     >
       <div className="flex items-center gap-2 px-4 py-1.5 border-b border-primary/10 bg-chat-bg shrink-0">

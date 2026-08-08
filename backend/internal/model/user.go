@@ -14,6 +14,6 @@ type User struct {
 	UpdatedAt      time.Time  `json:"updated_at"`
 	FailedAttempts int        `json:"failed_attempts"`
 	LockedUntil    *time.Time `json:"locked_until"`
-	RecoveryCodes *string `json:"-"`
-	TokenVersion  int     `json:"token_version"`
+	RecoveryCodes  *string    `json:"-"`
+	TokenVersion   int        `json:"token_version"`
 }
