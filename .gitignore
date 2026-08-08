@@ -12,9 +12,9 @@ server
 db/
 backend/db/
 
-# Test data
-/backend/project
-/backend/project/*
+# Project data (bare repos, worktrees) — except opencode config
+project/*
+!project/.opencode/
 
 # Frontend
 frontend/node_modules/

@@ -6,14 +6,16 @@ import (
 	"your-junior/internal/config"
 	"your-junior/internal/logger"
 	"your-junior/internal/opencode"
+	"your-junior/internal/service"
 
 	"github.com/gin-gonic/gin"
 )
 
-func SetupOpencodeRoutes(router *gin.Engine, cfg *config.CloudConfig, ocManager *opencode.Manager, ocHub *opencode.Hub) {
+func SetupOpencodeRoutes(router *gin.Engine, cfg *config.CloudConfig, ocManager *opencode.Manager, ocHub *opencode.Hub, worktreeSvc *service.WorktreeService) {
 	handler := &opencodeRouteHandler{
-		manager: ocManager,
-		hub:     ocHub,
+		manager:     ocManager,
+		hub:         ocHub,
+		worktreeSvc: worktreeSvc,
 	}
 
 	ocHub.OnCommand = handler.handleCommand
@@ -29,13 +31,14 @@ func SetupOpencodeRoutes(router *gin.Engine, cfg *config.CloudConfig, ocManager 
 }
 
 type opencodeRouteHandler struct {
-	manager  *opencode.Manager
-	hub      *opencode.Hub
-	client   *opencode.Client
-	sseProxy *opencode.SSEProxy
-	session  string
-	variant  string
-	agent    string
+	manager     *opencode.Manager
+	hub         *opencode.Hub
+	client      *opencode.Client
+	sseProxy    *opencode.SSEProxy
+	session     string
+	variant     string
+	agent       string
+	worktreeSvc *service.WorktreeService
 }
 
 func (h *opencodeRouteHandler) status(c *gin.Context) {
@@ -168,11 +171,11 @@ func (h *opencodeRouteHandler) messages(c *gin.Context) {
 	}
 
 	type HistoryMessage struct {
-		ID        string                  `json:"id"`
-		Role      string                  `json:"role"`
-		Text      string                  `json:"text"`
-		Reasoning string                  `json:"reasoning"`
-		Parts     []opencode.MessagePart  `json:"parts,omitempty"`
+		ID        string                 `json:"id"`
+		Role      string                 `json:"role"`
+		Text      string                 `json:"text"`
+		Reasoning string                 `json:"reasoning"`
+		Parts     []opencode.MessagePart `json:"parts,omitempty"`
 	}
 
 	result := make([]HistoryMessage, 0, len(entries))
@@ -475,7 +478,23 @@ func (h *opencodeRouteHandler) handleCommand(client *opencode.WSClient, msg open
 				return
 			}
 		}
-		session, err := h.client.CreateSession(h.manager.GetModel(), h.variant)
+		directory, _ := msg.Data["directory"].(string)
+		worktreeIDFloat, hasWorktreeID := msg.Data["worktree_id"].(float64)
+		if hasWorktreeID {
+			worktreeID := int64(worktreeIDFloat)
+			wt, err := h.worktreeSvc.GetWorktree(worktreeID)
+			if err != nil {
+				l.Warn("failed to lookup worktree", "worktree_id", worktreeID, "error", err)
+				h.hub.BroadcastTo(client, opencode.WSMessage{
+					Type: opencode.WSTypeError,
+					Data: map[string]any{"message": "failed to lookup worktree: " + err.Error()},
+				})
+				return
+			}
+			directory = wt.WorktreePath
+		}
+
+		session, err := h.client.CreateSession(h.manager.GetModel(), h.variant, directory)
 		if err != nil {
 			l.Error("failed to create session", "error", err)
 			h.hub.BroadcastTo(client, opencode.WSMessage{
@@ -485,10 +504,26 @@ func (h *opencodeRouteHandler) handleCommand(client *opencode.WSClient, msg open
 			return
 		}
 		h.session = session.ID
-		l.Info("session created", "session_id", session.ID)
+
+		var boundWorktreeID int64
+		if hasWorktreeID {
+			worktreeID := int64(worktreeIDFloat)
+			if err := h.worktreeSvc.BindSession(worktreeID, session.ID); err != nil {
+				l.Warn("failed to bind session to worktree", "worktree_id", worktreeID, "session_id", session.ID, "error", err)
+			} else {
+				boundWorktreeID = worktreeID
+				l.Info("session bound to worktree", "worktree_id", worktreeID, "session_id", session.ID)
+			}
+		}
+
+		l.Info("session created", "session_id", session.ID, "directory", directory, "bound_worktree_id", boundWorktreeID)
 		h.hub.BroadcastTo(client, opencode.WSMessage{
 			Type: opencode.WSTypeSessionCreated,
-			Data: map[string]any{"session_id": session.ID},
+			Data: map[string]any{
+				"session_id":    session.ID,
+				"worktree_id":   boundWorktreeID,
+				"worktree_path": directory,
+			},
 		})
 
 	case opencode.WSTypeSendMessage:

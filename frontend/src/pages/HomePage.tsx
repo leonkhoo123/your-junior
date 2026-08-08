@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react"
 import { useNavigate } from "react-router-dom"
-import { LogOut, Sun, Moon, Loader2, RefreshCw, Wifi, WifiOff } from "lucide-react"
+import { LogOut, Sun, Moon, Loader2, RefreshCw, Wifi, WifiOff, FolderGit2 } from "lucide-react"
 import { toast } from "sonner"
 import DefaultLayout from "@/layouts/DefaultLayout"
 import { Button } from "@/components/ui/button"
@@ -8,6 +8,7 @@ import { logout } from "@/api/api-auth"
 import { useOpencodeWebSocket } from "@/hooks/useOpencodeWebSocket"
 import type { WSStatus } from "@/api/wsClient"
 import { OpencodeChatPane } from "@/components/opencode/OpencodeChatPane"
+import { ProjectPanel } from "@/components/home/ProjectPanel"
 import { getConfig } from "@/config"
 import { logger } from "@/utils/logger"
 import { useTheme } from "@/components/theme-provider"
@@ -53,6 +54,15 @@ interface ProvidersResponse {
     connected?: string[]
     all_providers?: AllProviderInfo[]
   }
+}
+
+interface WorktreeData {
+  id: number
+  branch_name: string
+  status: string
+  opencode_session_id?: string | null
+  worktree_path: string
+  project_name: string
 }
 
 function useLoggedState<T>(initial: T, label: string): [T, React.Dispatch<React.SetStateAction<T>>] {
@@ -111,6 +121,10 @@ export default function HomePage() {
   const newChatRequestedRef = useRef(false)
   const restartRequestedRef = useRef(false)
   const prevWsStatusRef = useRef<WSStatus>("disconnected")
+
+  const [selectedWorktree, setSelectedWorktree] = useLoggedState<WorktreeData | null>(null, "selectedWorktree")
+  const [selectedWorktreeId, setSelectedWorktreeId] = useLoggedState<number | null>(null, "selectedWorktreeId")
+  const [selectedWorktreePath, setSelectedWorktreePath] = useLoggedState<string | null>(null, "selectedWorktreePath")
 
   useEffect(() => {
     const prev = prevWsStatusRef.current
@@ -202,11 +216,15 @@ export default function HomePage() {
           logger.info("Restarting opencode server after stop")
           setServerState("starting")
           send({ type: "start_server" })
+        } else {
+          setSelectedWorktree(null)
+          setSelectedWorktreeId(null)
+          setSelectedWorktreePath(null)
         }
       }
     })
     return unsub
-  }, [on, send, setServerState, setServerModel, setCurrentSessionId, setSessionTitle, setCurrentAgent, fetchProviders])
+  }, [on, send, setServerState, setServerModel, setCurrentSessionId, setSessionTitle, setCurrentAgent, fetchProviders, setSelectedWorktree, setSelectedWorktreeId, setSelectedWorktreePath])
 
   useEffect(() => {
     const unsub = on("model_changed", (msg) => {
@@ -238,11 +256,11 @@ export default function HomePage() {
   }, [on, setCurrentAgent])
 
   useEffect(() => {
-    if (serverState === "running" && !currentSessionId && wsStatus === "connected" && !newChatRequestedRef.current) {
-      logger.info("Auto-creating first session")
-      send({ type: "create_session" })
+    if (serverState === "running" && selectedWorktreeId && !currentSessionId && wsStatus === "connected" && !newChatRequestedRef.current) {
+      logger.info("Creating session for worktree", { worktree_id: selectedWorktreeId, branch: selectedWorktree?.branch_name, project: selectedWorktree?.project_name })
+      send({ type: "create_session", data: { worktree_id: selectedWorktreeId } })
     }
-  }, [serverState, currentSessionId, wsStatus, send])
+  }, [serverState, selectedWorktreeId, currentSessionId, wsStatus, send, selectedWorktree])
 
   useEffect(() => {
     const unsub = on("session_created", (msg) => {
@@ -251,11 +269,15 @@ export default function HomePage() {
       if (sid) {
         newChatRequestedRef.current = false
         setCurrentSessionId(sid)
-        setSessionTitle("Chat")
+        if (selectedWorktree) {
+          setSessionTitle(`${selectedWorktree.project_name} / ${selectedWorktree.branch_name}`)
+        } else {
+          setSessionTitle("Chat")
+        }
       }
     })
     return unsub
-  }, [on, setCurrentSessionId, setSessionTitle])
+  }, [on, setCurrentSessionId, setSessionTitle, selectedWorktree])
 
   useEffect(() => {
     const unsub = on("session_updated", (msg) => {
@@ -278,12 +300,12 @@ export default function HomePage() {
   }, [on])
 
   useEffect(() => {
-    if (wsStatus === "connected" && serverState === "stopped" && !restartRequestedRef.current) {
-      logger.info("Auto-starting opencode server")
+    if (wsStatus === "connected" && selectedWorktreeId && serverState === "stopped" && !restartRequestedRef.current) {
+      logger.info("Starting opencode server", { worktree_id: selectedWorktreeId })
       setServerState("starting")
       send({ type: "start_server" })
     }
-  }, [wsStatus, serverState, send, setServerState])
+  }, [wsStatus, selectedWorktreeId, serverState, send, setServerState])
 
   const handleRestart = useCallback(() => {
     logger.info("User requested restart")
@@ -306,6 +328,23 @@ export default function HomePage() {
     setCurrentSessionId(null)
     setSessionTitle("Chat")
   }, [setCurrentSessionId, setSessionTitle])
+
+  const handleSelectWorktree = useCallback(
+    (worktree: WorktreeData) => {
+      logger.info("Worktree selected", { branch: worktree.branch_name, project: worktree.project_name, path: worktree.worktree_path, id: worktree.id })
+
+      if (selectedWorktreeId && selectedWorktreeId !== worktree.id) {
+        newChatRequestedRef.current = false
+        setCurrentSessionId(null)
+        setSessionTitle("Chat")
+      }
+
+      setSelectedWorktree(worktree)
+      setSelectedWorktreeId(worktree.id)
+      setSelectedWorktreePath(worktree.worktree_path)
+    },
+    [selectedWorktreeId, setSelectedWorktree, setSelectedWorktreeId, setSelectedWorktreePath, setCurrentSessionId, setSessionTitle],
+  )
 
   const handleModelChange = useCallback(
     (providerID: string, modelID: string, variant?: string) => {
@@ -335,6 +374,10 @@ export default function HomePage() {
       void navigate("/login")
     })
   }
+
+  const chatTitle = selectedWorktree
+    ? `${selectedWorktree.project_name} / ${selectedWorktree.branch_name}`
+    : sessionTitle
 
   return (
     <DefaultLayout>
@@ -394,30 +437,54 @@ export default function HomePage() {
         </div>
       </header>
 
-      <div className="flex-1 flex min-h-0">
-        {serverState === "running" ? (
-          <OpencodeChatPane
-            sessionId={currentSessionId}
-            sessionTitle={sessionTitle}
-            send={send}
-            on={on}
-            providers={providers}
-            allProviders={allProviders}
-            connectedProviderIDs={connectedProviderIDs}
-            currentModel={serverModel}
-            currentAgent={currentAgent}
-            onModelChange={handleModelChange}
-            onSetApiKey={handleSetApiKey}
-            onSelectSession={handleSwitchSession}
-            onNewChat={handleNewChat}
+      <div className="flex-1 flex min-h-0 gap-2 p-2">
+        <div className="w-1/2 min-w-0 flex flex-col min-h-0">
+          <ProjectPanel
+            selectedWorktreePath={selectedWorktreePath}
+            selectedWorktreeId={selectedWorktreeId}
+            onSelectWorktree={handleSelectWorktree}
           />
-        ) : (
-          <div className="flex-1 flex items-center justify-center">
-            <p className="font-mono text-sm text-muted-foreground/40">
-              Start the OpenCode server to begin.
-            </p>
-          </div>
-        )}
+        </div>
+
+        <div className="w-1/2 min-w-0 flex flex-col min-h-0">
+          {selectedWorktree ? (
+            serverState === "running" ? (
+              <OpencodeChatPane
+                sessionId={currentSessionId}
+                sessionTitle={chatTitle}
+                send={send}
+                on={on}
+                providers={providers}
+                allProviders={allProviders}
+                connectedProviderIDs={connectedProviderIDs}
+                currentModel={serverModel}
+                currentAgent={currentAgent}
+                onModelChange={handleModelChange}
+                onSetApiKey={handleSetApiKey}
+                onSelectSession={handleSwitchSession}
+                onNewChat={handleNewChat}
+              />
+            ) : (
+              <div className="flex-1 flex items-center justify-center h-full">
+                <div className="flex flex-col items-center gap-2 text-center">
+                  <Loader2 className="size-5 animate-spin text-muted-foreground/40" />
+                  <p className="font-mono text-sm text-muted-foreground/40">
+                    Starting OpenCode server...
+                  </p>
+                </div>
+              </div>
+            )
+          ) : (
+            <div className="flex-1 flex items-center justify-center h-full">
+              <div className="flex flex-col items-center gap-2 text-center">
+                <FolderGit2 className="size-6 text-muted-foreground/20" />
+                <p className="font-mono text-sm text-muted-foreground/40">
+                  Select a project and branch to begin.
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     </DefaultLayout>
   )

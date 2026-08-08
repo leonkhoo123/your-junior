@@ -17,6 +17,7 @@ import (
 	"your-junior/internal/logger"
 	"your-junior/internal/opencode"
 	"your-junior/internal/repository"
+	"your-junior/internal/service"
 	"your-junior/ui"
 
 	gonetauth "github.com/leonkhoo123/gonet-auth"
@@ -122,6 +123,12 @@ func main() {
 
 	ocConfig := opencode.DefaultConfig()
 	ocManager := opencode.NewManager(ocConfig)
+
+	projectRepo := repository.NewSQLiteProjectRepo(config.DB)
+	worktreeRepo := repository.NewSQLiteWorktreeRepo(config.DB)
+	projectSvc := service.NewProjectService(projectRepo, worktreeRepo, ocConfig.WorkDir)
+	worktreeSvc := service.NewWorktreeService(worktreeRepo, projectRepo, ocConfig.WorkDir)
+
 	defer func() {
 		if err := ocManager.Stop(); err != nil {
 			logger.L.Warn("error stopping opencode", "error", err)
@@ -139,7 +146,8 @@ func main() {
 	controller.SetupAuthenticatedRoutes(router, authInstance, authCfg)
 	controller.SetupAdminRoutes(router, authInstance, authCfg)
 
-	controller.SetupOpencodeRoutes(router, cfg, ocManager, ocHub)
+	controller.SetupOpencodeRoutes(router, cfg, ocManager, ocHub, worktreeSvc)
+	controller.SetupGitRoutes(router, projectSvc, worktreeSvc)
 
 	distFS, err := fs.Sub(ui.Assets, "dist")
 	if err != nil {
