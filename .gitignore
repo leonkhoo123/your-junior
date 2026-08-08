@@ -12,8 +12,9 @@ server
 db/
 backend/db/
 
-# Project data (bare repos, worktrees)
-project/
+# Project data (bare repos, worktrees) — except opencode config
+project/*
+!project/.opencode/
 
 # Frontend
 frontend/node_modules/
@@ -30,7 +31,7 @@ backend/ui/dist/
 *.swo
 
 # OpenCode local config (not project-level)
-.opencode/
+/.opencode/
 
 # OS
 .DS_Store
