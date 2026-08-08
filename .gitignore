@@ -12,9 +12,8 @@ server
 db/
 backend/db/
 
-# Project data (bare repos, worktrees) — except opencode config
-project/*
-!project/.opencode/
+# Project data (bare repos, worktrees)
+project/
 
 # Frontend
 frontend/node_modules/
