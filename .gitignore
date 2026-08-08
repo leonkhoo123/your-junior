@@ -30,6 +30,9 @@ backend/ui/dist/
 *.swp
 *.swo
 
+# OpenCode local config (not project-level)
+.opencode/
+
 # OS
 .DS_Store
 Thumbs.db
